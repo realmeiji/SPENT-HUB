@@ -145,8 +145,6 @@ local IS_MOBILE = UserInputService and UserInputService.TouchEnabled and not Use
 local TARGET_LOCK_COLOR = Color3.fromRGB(255, 182, 193)
 local RING_IDLE_COLOR = Color3.fromRGB(200, 200, 220)
 
-local LMBHeld = false
-
 local Theme = {
     ACCENT = Color3.fromRGB(255, 182, 193),
     ACCENT_LIGHT = Color3.fromRGB(255, 200, 220),
@@ -487,8 +485,7 @@ end
 
 RunService.Heartbeat:Connect(function()
     if not shootRemote then return end
-    if not SilentAimSettings.FastSwitchEnabled then return end
-    if not LMBHeld then return end
+    if not SilentAimSettings.Enabled or not SilentAimSettings.AutoshootEnabled then return end
     if not currentTarget or not currentTarget.Parent then return end
     local char = LocalPlayer.Character
     local myHumanoid = char and char:FindFirstChildOfClass("Humanoid")
@@ -924,17 +921,6 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     applySpeed(SilentAimSettings.SpeedValue)
     applyJumpPower(SilentAimSettings.JumpPowerValue)
     if SilentAimSettings.FastSwitchEnabled then startFastSwitch() end
-end)
-
-UserInputService.InputBegan:Connect(function(input, processed)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        LMBHeld = true
-    end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        LMBHeld = false
-    end
 end)
 
 -- ============ GUI ============
@@ -1835,7 +1821,7 @@ local function buildFovDock()
         SilentAimSettings.FastSwitchEnabled = s
         if s then startFastSwitch() else stopFastSwitch() end
         notify("Fast Switch " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
-    end, "Cycle through selected guns. Hold LMB to fire.")
+    end, "Cycle through selected guns")
     makeSlider(rightScroll, "Fast Switch Speed x100", 1, 50, math.floor(SilentAimSettings.FastSwitchDelay * 100), function(v)
         SilentAimSettings.FastSwitchDelay = v / 100
     end)
@@ -1909,6 +1895,12 @@ local function buildMain()
         statusLabel.Text = "* method: " .. v
     end)
     makeSlider(scroll, "Hit Chance", 0, 100, SilentAimSettings.HitChance, function(v) SilentAimSettings.HitChance = v end)
+
+    makeSection(scroll, "AUTOSHOOT")
+    makeToggle(scroll, "Autoshoot", SilentAimSettings.AutoshootEnabled, function(s)
+        SilentAimSettings.AutoshootEnabled = s
+        notify("Autoshoot " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Auto fires at current silent aim target")
 
     makeSection(scroll, "FILTERS")
     makeToggle(scroll, "Team Check", SilentAimSettings.TeamCheck, function(s) SilentAimSettings.TeamCheck = s end)
@@ -2221,22 +2213,24 @@ local function buildInfo()
   Gun order:
    M9 -> Revolver -> Remington 870
    -> MP5 -> M4A1 -> M700
-  Toggles are clickable, missing guns
-  show "(missing)" in grey.
+  Missing guns show "(missing)" in grey.
 
- LMB hold to fire:
-  With Fast Switch on, holding LMB
-  fires the currently-equipped gun
-  at the silent aim target, at that
-  gun's own FireRate.
+ Autoshoot (Main tab):
+  Toggle in the Autoshoot section.
+  Fires the currently-equipped gun at
+  the silent aim target, at that gun's
+  own FireRate. Independent of fast
+  switch -- can be on with or without
+  fast switch, and fires whichever gun
+  is currently equipped.
 
  Visuals tab:
   Noclip / Speed / Jump Power / Invisible
   Korblox / Headless
 
  Main tab:
-  Silent Aim / Filters / Target Team
-  Prediction / Whitelist Player
+  Silent Aim / Autoshoot / Filters
+  Target Team / Prediction / Whitelist
 
  Keybinds:
   RAlt  - toggle silent aim
@@ -2620,6 +2614,6 @@ bgBlur.Visible = true
 openState = "open"
 notify("SPENT HUB loaded", Theme.ACCENT)
 task.delay(0.4, function()
-    notify("fast switch guns: M9 -> Revolver -> Rem 870 -> MP5 -> M4A1 -> M700", Theme.TEXT_DIM)
+    notify("autoshoot toggle is in Main", Theme.TEXT_DIM)
 end)
 print("SPENT HUB loaded.")
