@@ -111,13 +111,15 @@ local SilentAimSettings = {
     ESP_HPColor = Color3.fromRGB(80, 255, 100),
     ESP_TraceColor = Color3.fromRGB(255, 255, 255),
     AutoshootEnabled = false,
-    -- Visuals tab
     NoclipEnabled = false,
     SpeedValue = 16,
     JumpPowerValue = 50,
     InvisibleEnabled = false,
     KorbloxEnabled = false,
     HeadlessEnabled = false,
+    FastSwitchEnabled = false,
+    FastSwitchDelay = 0.05,
+    FastSwitchList = {},
 }
 getgenv().SilentAimSettings = SilentAimSettings
 
@@ -142,6 +144,8 @@ end
 local IS_MOBILE = UserInputService and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 local TARGET_LOCK_COLOR = Color3.fromRGB(255, 182, 193)
 local RING_IDLE_COLOR = Color3.fromRGB(200, 200, 220)
+
+local LMBHeld = false
 
 local Theme = {
     ACCENT = Color3.fromRGB(255, 182, 193),
@@ -327,7 +331,7 @@ task.spawn(function()
     end
 end)
 
--- autoshoot
+-- autoshoot plumbing
 local shootRemote = nil
 local AutoShootGunTracers = nil
 pcall(function()
@@ -359,7 +363,7 @@ autoShootParams.CollisionGroup = "ClientBullet"
 
 local lastAutoShotByWeapon = {}
 local AutoShootRaycastInProgress = false
-local gunModNames = {"AK-47", "Remington 870", "M9", "M700", "M4A1", "FAL", "MP5", "Revolver"}
+local gunModNames = {"AK-47", "Remington 870", "M9", "M700", "M4A1", "FAL", "MP5", "Revolver", "Taser"}
 
 local function getSmoothedTargetPosition()
     if currentTarget and currentTarget.Parent then return currentTarget.Position end
@@ -483,7 +487,9 @@ end
 
 RunService.Heartbeat:Connect(function()
     if not shootRemote then return end
-    if not SilentAimSettings.Enabled or not SilentAimSettings.AutoshootEnabled then return end
+    -- LMB-hold auto-fire, gated ONLY by fast switch
+    if not SilentAimSettings.FastSwitchEnabled then return end
+    if not LMBHeld then return end
     if not currentTarget or not currentTarget.Parent then return end
     local char = LocalPlayer.Character
     local myHumanoid = char and char:FindFirstChildOfClass("Humanoid")
@@ -500,6 +506,59 @@ RunService.Heartbeat:Connect(function()
     lastAutoShotByWeapon[weapon.Name] = tick()
     performAutoShot(weapon)
 end)
+
+-- FAST SWITCH
+local fastSwitchConnection = nil
+local function stopFastSwitch()
+    if fastSwitchConnection then
+        pcall(function() task.cancel(fastSwitchConnection) end)
+        fastSwitchConnection = nil
+    end
+end
+
+local function startFastSwitch()
+    stopFastSwitch()
+    fastSwitchConnection = task.spawn(function()
+        while SilentAimSettings.FastSwitchEnabled do
+            local char = LocalPlayer.Character
+            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+            if not char or not humanoid or humanoid.Health <= 0 then
+                task.wait(0.1)
+                continue
+            end
+            local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+            if not backpack then
+                task.wait(0.1)
+                continue
+            end
+            local list = SilentAimSettings.FastSwitchList
+            if not list or #list == 0 then
+                task.wait(0.1)
+                continue
+            end
+            for _, weaponName in ipairs(list) do
+                if not SilentAimSettings.FastSwitchEnabled then break end
+                local tool = backpack:FindFirstChild(weaponName) or char:FindFirstChild(weaponName)
+                if tool and tool:IsA("Tool") then
+                    pcall(function() humanoid:EquipTool(tool) end)
+                end
+                task.wait(SilentAimSettings.FastSwitchDelay)
+            end
+        end
+    end)
+end
+
+local function getBackpackGuns()
+    local out = {}
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+    if not backpack then return out end
+    for _, t in ipairs(backpack:GetChildren()) do
+        if t:IsA("Tool") then
+            table.insert(out, t.Name)
+        end
+    end
+    return out
+end
 
 -- ESP
 local espCache = {}
@@ -676,8 +735,7 @@ local function updateESP()
     end
 end
 
--- ============ VISUALS FEATURES ============
--- Noclip: toggles Stepped connection
+-- VISUALS
 local noclipConnection = nil
 local function noclipStep()
     local char = LocalPlayer.Character
@@ -699,14 +757,12 @@ local function stopNoclip()
     end
 end
 
--- Speed: applies WalkSpeed to Humanoid
 local function applySpeed(v)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then hum.WalkSpeed = v end
 end
 
--- JumpPower
 local function applyJumpPower(v)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -716,7 +772,6 @@ local function applyJumpPower(v)
     end
 end
 
--- Invisible (Precision Hub approach)
 local InvisibleRealCFrame = nil
 local InvisibleAnimationTrack = nil
 local InvisibleRenderKey = "SpentHubInvisibleRender"
@@ -820,7 +875,6 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Korblox (Precision Hub ids)
 local KorbloxMeshId = "rbxassetid://101851696"
 local KorbloxTextureId = "rbxassetid://101851254"
 
@@ -840,7 +894,6 @@ local function applyKorblox(character)
     mesh.Parent = rightLeg
 end
 
--- Headless (Precision Hub ids)
 local HeadlessMeshId = "rbxassetid://1095708"
 
 local function applyHeadless(character)
@@ -862,7 +915,6 @@ local function applyHeadless(character)
     mesh.Parent = head
 end
 
--- reapply on respawn
 LocalPlayer.CharacterAdded:Connect(function(char)
     task.wait(1)
     if SilentAimSettings.NoclipEnabled then startNoclip() end
@@ -872,6 +924,19 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     task.wait(0.1)
     applySpeed(SilentAimSettings.SpeedValue)
     applyJumpPower(SilentAimSettings.JumpPowerValue)
+    if SilentAimSettings.FastSwitchEnabled then startFastSwitch() end
+end)
+
+-- LMB tracking
+UserInputService.InputBegan:Connect(function(input, processed)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        LMBHeld = true
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        LMBHeld = false
+    end
 end)
 
 -- ============ GUI ============
@@ -1391,7 +1456,7 @@ local function makeToggle(parent, name, default, callback, tooltip)
     lbl.TextSize = 11
     lbl.TextXAlignment = Enum.TextXAlignment.Left
 
-    local ind = Instance.new("Frame", ind or btn)
+    local ind = Instance.new("Frame", btn)
     ind.Size = UDim2.new(0, 38, 0, 18)
     ind.Position = UDim2.new(1, -48, 0.5, -9)
     ind.BackgroundColor3 = default and Theme.ACCENT or Color3.fromRGB(45, 45, 55)
@@ -1663,7 +1728,7 @@ local function rebuildWhitelistPlayerList(container)
     end
 end
 
--- FOV dock (no Static toggle now)
+-- FOV dock + Fast Switch dock
 local function buildFovDock()
     for _, c in ipairs(rightScroll:GetChildren()) do
         if c:IsA("GuiObject") then c:Destroy() end
@@ -1689,6 +1754,139 @@ local function buildFovDock()
         fov_circle.Radius = v
         statusLabel.Text = "* idle · method: " .. SilentAimSettings.SilentAimMethod .. " · fov: " .. v
     end)
+
+    local gunSwitchContainer
+    local function refreshGunList()
+        if not gunSwitchContainer then return end
+        for _, c in ipairs(gunSwitchContainer:GetChildren()) do
+            if c:IsA("Frame") or c:IsA("TextLabel") then c:Destroy() end
+        end
+        local guns = getBackpackGuns()
+        if #guns == 0 then
+            local e = Instance.new("TextLabel", gunSwitchContainer)
+            e.Size = UDim2.new(1, 0, 0, 22)
+            e.BackgroundTransparency = 1
+            e.Text = " no guns in backpack"
+            e.TextColor3 = Theme.TEXT_DIM
+            e.Font = Enum.Font.Gotham
+            e.TextSize = 10
+            e.TextXAlignment = Enum.TextXAlignment.Left
+            return
+        end
+        for _, gunName in ipairs(guns) do
+            local selected = table.find(SilentAimSettings.FastSwitchList, gunName) ~= nil
+            local row = Instance.new("Frame", gunSwitchContainer)
+            row.Size = UDim2.new(1, 0, 0, 26)
+            row.BackgroundColor3 = Theme.BG_OPT
+            row.BackgroundTransparency = 0.08
+            row.BorderSizePixel = 0
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0.24, 0)
+
+            local rowStroke = Instance.new("UIStroke", row)
+            rowStroke.Color = selected and Theme.ACCENT or Theme.BORDER
+            rowStroke.Thickness = 0.5
+            rowStroke.Transparency = selected and 0.3 or 0.6
+
+            local lbl = Instance.new("TextLabel", row)
+            lbl.Size = UDim2.new(1, -34, 1, 0)
+            lbl.Position = UDim2.new(0, 10, 0, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.Text = gunName
+            lbl.TextColor3 = selected and Theme.ACCENT or Theme.TEXT
+            lbl.Font = Enum.Font.GothamMedium
+            lbl.TextSize = 10
+            lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            local ind = Instance.new("Frame", row)
+            ind.Size = UDim2.new(0, 28, 0, 14)
+            ind.Position = UDim2.new(1, -34, 0.5, -7)
+            ind.BackgroundColor3 = selected and Theme.ACCENT or Color3.fromRGB(45, 45, 55)
+            ind.BorderSizePixel = 0
+            Instance.new("UICorner", ind).CornerRadius = UDim.new(1, 0)
+
+            local dot = Instance.new("Frame", ind)
+            dot.Size = UDim2.new(0, 10, 0, 10)
+            dot.Position = selected and UDim2.new(1, -12, 0.5, -5) or UDim2.new(0, 2, 0.5, -5)
+            dot.BackgroundColor3 = Color3.fromRGB(250, 250, 250)
+            dot.BorderSizePixel = 0
+            Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+            local click = Instance.new("TextButton", row)
+            click.Size = UDim2.new(1, 0, 1, 0)
+            click.BackgroundTransparency = 1
+            click.Text = ""
+            click.ZIndex = 2
+            click.MouseButton1Click:Connect(function()
+                local found = table.find(SilentAimSettings.FastSwitchList, gunName)
+                if found then
+                    table.remove(SilentAimSettings.FastSwitchList, found)
+                    rowStroke.Color = Theme.BORDER
+                    rowStroke.Transparency = 0.6
+                    lbl.TextColor3 = Theme.TEXT
+                    TweenService:Create(dot, TweenInfo.new(0.18), {Position = UDim2.new(0, 2, 0.5, -5)}):Play()
+                    TweenService:Create(ind, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(45, 45, 55)}):Play()
+                else
+                    table.insert(SilentAimSettings.FastSwitchList, gunName)
+                    rowStroke.Color = Theme.ACCENT
+                    rowStroke.Transparency = 0.3
+                    lbl.TextColor3 = Theme.ACCENT
+                    TweenService:Create(dot, TweenInfo.new(0.18), {Position = UDim2.new(1, -12, 0.5, -5)}):Play()
+                    TweenService:Create(ind, TweenInfo.new(0.18), {BackgroundColor3 = Theme.ACCENT}):Play()
+                end
+            end)
+        end
+    end
+
+    makeSection(rightScroll, "FAST SWITCH")
+    makeToggle(rightScroll, "Enable Fast Switch", SilentAimSettings.FastSwitchEnabled, function(s)
+        SilentAimSettings.FastSwitchEnabled = s
+        if s then startFastSwitch() else stopFastSwitch() end
+        notify("Fast Switch " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Cycle through selected guns. Hold LMB to fire.")
+    makeSlider(rightScroll, "Fast Switch Speed x100", 1, 50, math.floor(SilentAimSettings.FastSwitchDelay * 100), function(v)
+        SilentAimSettings.FastSwitchDelay = v / 100
+    end)
+
+    gunSwitchContainer = Instance.new("Frame", rightScroll)
+    gunSwitchContainer.Size = UDim2.new(1, 0, 0, 10)
+    gunSwitchContainer.BackgroundTransparency = 1
+    gunSwitchContainer.AutomaticSize = Enum.AutomaticSize.Y
+    local gsLayout = Instance.new("UIListLayout", gunSwitchContainer)
+    gsLayout.Padding = UDim.new(0, 3)
+    gsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local refreshBtn = Instance.new("TextButton", rightScroll)
+    refreshBtn.Size = UDim2.new(1, 0, 0, 24)
+    refreshBtn.BackgroundColor3 = Theme.BG_OPT
+    refreshBtn.BackgroundTransparency = 0.08
+    refreshBtn.Text = "Refresh Gun List"
+    refreshBtn.TextColor3 = Theme.TEXT_DIM
+    refreshBtn.Font = Enum.Font.GothamMedium
+    refreshBtn.TextSize = 9
+    refreshBtn.BorderSizePixel = 0
+    refreshBtn.AutoButtonColor = false
+    Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0.24, 0)
+    refreshBtn.MouseButton1Click:Connect(function()
+        refreshGunList()
+        notify("Gun list refreshed", Theme.ACCENT)
+    end)
+
+    refreshGunList()
+    local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+    if bp then
+        bp.ChildAdded:Connect(function() task.wait(0.1) refreshGunList() end)
+        bp.ChildRemoved:Connect(function() task.wait(0.1) refreshGunList() end)
+    end
+    LocalPlayer.CharacterAdded:Connect(function()
+        task.wait(1)
+        local bp2 = LocalPlayer:FindFirstChildOfClass("Backpack")
+        if bp2 then
+            bp2.ChildAdded:Connect(function() task.wait(0.1) refreshGunList() end)
+            bp2.ChildRemoved:Connect(function() task.wait(0.1) refreshGunList() end)
+        end
+        refreshGunList()
+    end)
+
     task.defer(function()
         rightScroll.CanvasSize = UDim2.new(0, 0, 0, rl.AbsoluteContentSize.Y + 8)
     end)
@@ -2010,7 +2208,7 @@ end
 local function buildInfo()
     makeSection(scroll, "INFO")
     local info = Instance.new("TextLabel", scroll)
-    info.Size = UDim2.new(1, 0, 0, 380)
+    info.Size = UDim2.new(1, 0, 0, 440)
     info.BackgroundColor3 = Theme.BG_OPT
     info.BackgroundTransparency = 0.08
     info.TextColor3 = Theme.TEXT
@@ -2026,6 +2224,18 @@ local function buildInfo()
   Fov Circle    - toggle drawing
   Center FOV    - locks to screen center
   Fov Circle Size - adjusts radius
+
+ Fast Switch (right dock):
+  Enable Fast Switch - start cycling guns
+  Fast Switch Speed  - delay between equips
+  Gun list           - tap to include/exclude
+  Refresh Gun List   - rescans your backpack
+
+ LMB hold to fire:
+  When Fast Switch is enabled, holding
+  LMB fires the currently-equipped gun
+  at the silent aim target. Fires at
+  the gun's own FireRate.
 
  Visuals tab:
   Player Settings
@@ -2152,7 +2362,6 @@ end
 
 buildFovDock()
 
--- open/close
 local openState = "idle"
 local activeOpenTweens, activeCloseTweens = {}, {}
 
@@ -2313,6 +2522,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
         pcall(function() mouse_box:Remove() end)
         stopNoclip()
         stopInvisible()
+        stopFastSwitch()
         for _, p in ipairs(Players:GetPlayers()) do clearESP(p) end
         print("SPENT HUB unloaded.")
     end
@@ -2427,6 +2637,6 @@ bgBlur.Visible = true
 openState = "open"
 notify("SPENT HUB loaded", Theme.ACCENT)
 task.delay(0.4, function()
-    notify("visuals tab has noclip, speed, invis, korblox, headless", Theme.TEXT_DIM)
+    notify("fast switch: hold LMB to fire the active gun", Theme.TEXT_DIM)
 end)
 print("SPENT HUB loaded.")
