@@ -1,0 +1,1209 @@
+if not game:IsLoaded() then game.Loaded:Wait() end
+if not syn or not protectgui then getgenv().protectgui = function() end end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+-- Obsidian library (deividcomsono)
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+-- settings
+local SilentAimSettings = {
+    Enabled = false,
+    TeamCheck = false,
+    VisibleCheck = false,
+    TargetPart = "HumanoidRootPart",
+    SilentAimMethod = "Raycast",
+    FOVRadius = 130,
+    FOVVisible = false,
+    FOVCenter = false,
+    ShowSilentAimTarget = false,
+    MouseHitPrediction = false,
+    MouseHitPredictionAmount = 0.165,
+    HitChance = 100,
+    TargetCop = true,
+    TargetInmate = true,
+    TargetCriminal = true,
+    ESP_Enabled = false,
+    ESP_Team = false,
+    ESP_Highlight = true,
+    ESP_Name = true,
+    ESP_Health = true,
+    ESP_Trace = false,
+    ESP_MaxDistance = 1500,
+    ESP_HighlightColor = Color3.fromRGB(255, 182, 193),
+    ESP_NameColor = Color3.fromRGB(255, 255, 255),
+    ESP_HPColor = Color3.fromRGB(80, 255, 100),
+    ESP_TraceColor = Color3.fromRGB(255, 255, 255),
+    AutoshootEnabled = false,
+    NoclipEnabled = false,
+    SpeedValue = 16,
+    JumpPowerValue = 50,
+    InvisibleEnabled = false,
+    KorbloxEnabled = false,
+    HeadlessEnabled = false,
+    FastSwitchEnabled = false,
+    FastSwitchDelay = 0.05,
+    FastSwitchList = {"M9", "Revolver", "Remington 870", "MP5", "M4A1", "M700", "AK-47"},
+    FastSwitchHotkey = Enum.KeyCode.H,
+    NoclipPunchEnabled = false,
+}
+getgenv().SilentAimSettings = SilentAimSettings
+
+local Whitelist = {}
+getgenv().SilentAimWhitelist = Whitelist
+
+local function isWhitelisted(plr)
+    if not plr then return false end
+    return Whitelist[string.lower(plr.Name)] == true
+end
+local function addWhitelist(name)
+    if not name or name == "" then return false end
+    Whitelist[string.lower(name)] = true
+    return true
+end
+local function removeWhitelist(name)
+    if not name then return false end
+    Whitelist[string.lower(name)] = nil
+    return true
+end
+
+local IS_MOBILE = UserInputService and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local TARGET_LOCK_COLOR = Color3.fromRGB(255, 182, 193)
+local RING_IDLE_COLOR = Color3.fromRGB(200, 200, 220)
+
+local Camera = workspace.CurrentCamera
+local HttpService = game:GetService("HttpService")
+local Mouse = LocalPlayer:GetMouse()
+local GetPlayers = Players.GetPlayers
+local WorldToScreen = Camera.WorldToScreenPoint
+local WorldToViewportPoint = Camera.WorldToViewportPoint
+local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
+local FindFirstChild = game.FindFirstChild
+local RenderStepped = RunService.RenderStepped
+local GetMouseLocation = UserInputService.GetMouseLocation
+local ValidTargetParts = {"Head", "HumanoidRootPart"}
+local PredictionAmount = 0.165
+
+local mouse_box = Drawing.new("Square")
+mouse_box.Visible = false
+mouse_box.ZIndex = 999
+mouse_box.Color = Color3.fromRGB(255, 182, 193)
+mouse_box.Thickness = 2
+mouse_box.Size = Vector2.new(20, 20)
+mouse_box.Filled = false
+
+local fov_circle = Drawing.new("Circle")
+fov_circle.Thickness = 1.5
+fov_circle.NumSides = 100
+fov_circle.Radius = 130
+fov_circle.Filled = false
+fov_circle.Visible = false
+fov_circle.ZIndex = 999
+fov_circle.Transparency = 0.9
+fov_circle.Color = Color3.fromRGB(255, 182, 193)
+
+local ExpectedArguments = {
+    FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = { "Instance", "Ray", "table", "boolean", "boolean" } },
+    FindPartOnRayWithWhitelist = { ArgCountRequired = 3, Args = { "Instance", "Ray", "table", "boolean" } },
+    FindPartOnRay = { ArgCountRequired = 2, Args = { "Instance", "Ray", "Instance", "boolean", "boolean" } },
+    Raycast = { ArgCountRequired = 3, Args = { "Instance", "Vector3", "Vector3", "RaycastParams" } },
+}
+
+local lastRollTime, lastRollResult = 0, false
+local function CalculateChance(Percentage)
+    local now = tick()
+    if now - lastRollTime < 0.15 then return lastRollResult end
+    lastRollTime = now
+    Percentage = math.floor(Percentage)
+    local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
+    lastRollResult = chance <= Percentage / 100
+    return lastRollResult
+end
+
+local function getPositionOnScreen(Vector)
+    local Vec3, OnScreen = WorldToScreen(Camera, Vector)
+    return Vector2.new(Vec3.X, Vec3.Y), OnScreen
+end
+
+local function ValidateArguments(Args, RayMethod)
+    local n = 0
+    if #Args < RayMethod.ArgCountRequired then return false end
+    for Pos, Argument in next, Args do
+        if typeof(Argument) == RayMethod.Args[Pos] then n = n + 1 end
+    end
+    return n >= RayMethod.ArgCountRequired
+end
+
+local function getDirection(Origin, Position)
+    return (Position - Origin).Unit * 1000
+end
+
+local function getCenter()
+    local vp = Camera.ViewportSize
+    return Vector2.new(vp.X / 2, vp.Y / 2)
+end
+
+local function getCursorPos()
+    if IS_MOBILE then
+        local vp = Camera.ViewportSize
+        return Vector2.new(vp.X / 2, vp.Y / 2)
+    end
+    return GetMouseLocation(UserInputService)
+end
+
+local function getAimOrigin()
+    if SilentAimSettings.FOVCenter then return getCenter() end
+    return getCursorPos()
+end
+
+local function IsPlayerVisible(Player)
+    local PlayerCharacter = Player.Character
+    local LocalPlayerCharacter = LocalPlayer.Character
+    if not (PlayerCharacter and LocalPlayerCharacter) then return false end
+    local PlayerRoot = FindFirstChild(PlayerCharacter, SilentAimSettings.TargetPart) or FindFirstChild(PlayerCharacter, "HumanoidRootPart")
+    if not PlayerRoot then return false end
+    local CastPoints = {PlayerRoot.Position, LocalPlayerCharacter, PlayerCharacter}
+    local IgnoreList = {LocalPlayerCharacter, PlayerCharacter}
+    return #GetPartsObscuringTarget(Camera, CastPoints, IgnoreList) == 0
+end
+
+local function getTeamColor(player)
+    local ok, color = pcall(function()
+        if player.Team and player.Team.TeamColor then return player.Team.TeamColor.Color end
+        local char = player.Character
+        if char then
+            local bc = char:FindFirstChildOfClass("BodyColors")
+            if bc then return bc.HeadColor3 end
+        end
+        return Color3.fromRGB(255, 182, 193)
+    end)
+    if ok and color then return color end
+    return Color3.fromRGB(255, 182, 193)
+end
+
+local function matchesTeam(Player)
+    if not Player.Team then return true end
+    local n = Player.Team.Name
+    if n == "Guards" and not SilentAimSettings.TargetCop then return false end
+    if n == "Inmates" and not SilentAimSettings.TargetInmate then return false end
+    if n == "Criminals" and not SilentAimSettings.TargetCriminal then return false end
+    return true
+end
+
+local currentTarget = nil
+local function getClosestPlayer()
+    if not SilentAimSettings.TargetPart then return end
+    local Closest, DistanceToMouse
+    local origin = getAimOrigin()
+    for _, Player in next, GetPlayers(Players) do
+        if Player == LocalPlayer then continue end
+        if isWhitelisted(Player) then continue end
+        if SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team then continue end
+        if not matchesTeam(Player) then continue end
+        local Character = Player.Character
+        if not Character then continue end
+        if SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player) then continue end
+        local HumanoidRootPart = FindFirstChild(Character, "HumanoidRootPart")
+        local Humanoid = FindFirstChild(Character, "Humanoid")
+        if not HumanoidRootPart or not Humanoid or (Humanoid and Humanoid.Health <= 0) then continue end
+        local ScreenPosition, OnScreen = getPositionOnScreen(HumanoidRootPart.Position)
+        if not OnScreen then continue end
+        local Distance = (origin - ScreenPosition).Magnitude
+        if Distance <= (DistanceToMouse or SilentAimSettings.FOVRadius or 2000) then
+            local targetPartName = SilentAimSettings.TargetPart
+            local partInstance
+            if targetPartName == "Random" then
+                partInstance = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]]
+            else
+                partInstance = Character[targetPartName]
+            end
+            Closest = partInstance
+            DistanceToMouse = Distance
+        end
+    end
+    return Closest
+end
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if SilentAimSettings.Enabled then
+            currentTarget = getClosestPlayer()
+        else
+            currentTarget = nil
+        end
+    end
+end)
+
+-- autoshoot plumbing
+local shootRemote = nil
+local AutoShootGunTracers = nil
+pcall(function()
+    local gunRemotes = ReplicatedStorage:WaitForChild("GunRemotes", 5)
+    if gunRemotes then
+        shootRemote = gunRemotes:WaitForChild("ShootEvent", 5)
+    end
+end)
+pcall(function()
+    local sharedModules = ReplicatedStorage:WaitForChild("SharedModules", 5)
+    local tracersModule = sharedModules and sharedModules:WaitForChild("GunTracers", 5)
+    if tracersModule then
+        AutoShootGunTracers = require(tracersModule)
+    end
+end)
+
+local function getEquippedWeapon()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Tool") then return child end
+    end
+    return nil
+end
+
+local autoShootParams = RaycastParams.new()
+autoShootParams.FilterType = Enum.RaycastFilterType.Exclude
+autoShootParams.CollisionGroup = "ClientBullet"
+
+local lastAutoShotByWeapon = {}
+local AutoShootRaycastInProgress = false
+local gunModNames = {"AK-47", "Remington 870", "M9", "M700", "M4A1", "FAL", "MP5", "Revolver", "Taser"}
+
+local function getSmoothedTargetPosition()
+    if currentTarget and currentTarget.Parent then return currentTarget.Position end
+    return nil
+end
+
+local function getRedirectedDirectionForAutoShoot(Origin)
+    local pos = getSmoothedTargetPosition()
+    if not pos then return nil end
+    local OriginalDistance = (pos - Origin).Magnitude
+    if OriginalDistance == 0 then OriginalDistance = 1000 end
+    local PartSize = currentTarget.Size
+    local SpreadX = (math.random() - 0.5) * (PartSize.X + 2) * 0.2
+    local SpreadY = (math.random() - 0.5) * (PartSize.Y + 2) * 0.2
+    local SpreadZ = (math.random() - 0.5) * (PartSize.Z + 2) * 0.2
+    local TargetPosition = pos + Vector3.new(SpreadX, SpreadY, SpreadZ)
+    local NewDirection = (TargetPosition - Origin)
+    local NewDistance = NewDirection.Magnitude
+    if NewDistance == 0 then return nil end
+    return NewDirection.Unit * math.max(OriginalDistance, NewDistance)
+end
+
+local function updateAmmoLabel(weapon, currentAmmo)
+    local ok, gunFrame = pcall(function()
+        return LocalPlayer.PlayerGui:WaitForChild("Home", 3)
+            :WaitForChild("hud", 3)
+            :WaitForChild("BottomRightFrame", 3)
+            :WaitForChild("GunFrame", 3)
+    end)
+    if not ok or not gunFrame then return end
+    local bulletsLabel = gunFrame:FindFirstChild("BulletsLabel")
+    if not bulletsLabel then return end
+    local behavior = weapon:GetAttribute("Behavior")
+    if behavior == "Sniper" then
+        local stored = weapon:GetAttribute("StoredAmmo") or 0
+        bulletsLabel.Text = currentAmmo .. " | " .. stored
+    else
+        local maxAmmo = weapon:GetAttribute("MaxAmmo") or currentAmmo
+        bulletsLabel.Text = currentAmmo .. "/" .. maxAmmo
+    end
+end
+
+local function castPelletRayAutoShoot(weapon, origin, aimPoint, spreadRadius)
+    local roll = math.random()
+    local behavior = weapon:GetAttribute("Behavior")
+    if behavior == "Sniper" or behavior == "Shotgun" then
+        roll = math.sqrt(roll)
+    end
+    local range = weapon:GetAttribute("Range") or 1000
+    local lookCFrame = CFrame.new(origin, aimPoint)
+    local rollAngle = 360 - 720 * math.random()
+    local direction = (lookCFrame * CFrame.Angles(0, 0, math.rad(rollAngle)) * CFrame.Angles(0, roll * spreadRadius, 0)).LookVector * range
+    AutoShootRaycastInProgress = true
+    local result = workspace:Raycast(origin, direction, autoShootParams)
+    AutoShootRaycastInProgress = false
+    local hitInstance = result and result.Instance or nil
+    local hitPosition = result and result.Position or (origin + direction)
+    return hitInstance, hitPosition
+end
+
+local function performAutoShot(weapon)
+    if not weapon or not shootRemote then return end
+    if not currentTarget or not currentTarget.Parent then return end
+    local behavior = weapon:GetAttribute("Behavior")
+    local reloadSession = weapon:GetAttribute("Local_ReloadSession") or 0
+    local currentAmmo = weapon:GetAttribute("Local_CurrentAmmo") or 0
+    if reloadSession ~= 0 then return end
+    if currentAmmo <= 0 then return end
+    local char = LocalPlayer.Character
+    local head = char and char:FindFirstChild("Head")
+    if not head then return end
+    local origin = head.Position
+    autoShootParams.FilterDescendantsInstances = { char }
+    local aimPoint = currentTarget.Position
+    local redirected = getRedirectedDirectionForAutoShoot(origin)
+    if redirected then aimPoint = origin + redirected end
+    local projectileCount = weapon:GetAttribute("ProjectileCount") or 1
+    local spreadRadius = weapon:GetAttribute("SpreadRadius") or 0
+    local muzzle = weapon:FindFirstChild("Muzzle")
+    local muzzlePos = muzzle and muzzle.Position or origin
+    local bulletData = {}
+    for i = 1, projectileCount do
+        local hitInstance, hitPosition = castPelletRayAutoShoot(weapon, origin, aimPoint, spreadRadius)
+        table.insert(bulletData, { origin, hitPosition, hitInstance })
+        if AutoShootGunTracers then
+            pcall(function()
+                if behavior == "Sniper" then
+                    AutoShootGunTracers.createSniper(muzzlePos, hitPosition)
+                elseif behavior == "Taser" then
+                    AutoShootGunTracers.createTaser(muzzlePos, hitPosition)
+                else
+                    AutoShootGunTracers.createBullet(muzzlePos, hitPosition)
+                end
+            end)
+        end
+    end
+    shootRemote:FireServer(bulletData)
+    local newAmmo = currentAmmo - 1
+    weapon:SetAttribute("Local_CurrentAmmo", newAmmo)
+    updateAmmoLabel(weapon, newAmmo)
+    pcall(function()
+        local handle = weapon:FindFirstChild("Handle")
+        if handle then
+            local shootSound = handle:FindFirstChild("ShootSound")
+            if shootSound then
+                local cloned = shootSound:Clone()
+                cloned.Parent = handle
+                cloned:Play()
+                game:GetService("Debris"):AddItem(cloned, 5)
+            end
+            local flare = handle:FindFirstChild("Flare")
+            if flare then
+                flare.Enabled = true
+                task.delay(0.05, function()
+                    if flare then flare.Enabled = false end
+                end)
+            end
+        end
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not shootRemote then return end
+    if not SilentAimSettings.Enabled or not SilentAimSettings.AutoshootEnabled then return end
+    if not currentTarget or not currentTarget.Parent then return end
+    local char = LocalPlayer.Character
+    local myHumanoid = char and char:FindFirstChildOfClass("Humanoid")
+    if not myHumanoid or myHumanoid.Health <= 0 then return end
+    local weapon = getEquippedWeapon()
+    if not weapon then return end
+    if not table.find(gunModNames, weapon.Name) then return end
+    local fireRate = weapon:GetAttribute("FireRate") or 0.1
+    local weaponAutoFireAttr = weapon:GetAttribute("AutoFire")
+    if not weaponAutoFireAttr then fireRate = fireRate * 1.5 end
+    if weapon.Name == "Remington 870" then fireRate = 0.45 end
+    local lastShotTime = lastAutoShotByWeapon[weapon.Name] or 0
+    if (tick() - lastShotTime) < fireRate then return end
+    lastAutoShotByWeapon[weapon.Name] = tick()
+    performAutoShot(weapon)
+end)
+
+-- FAST SWITCH
+local fastSwitchConnection = nil
+local function stopFastSwitch()
+    if fastSwitchConnection then
+        pcall(function() task.cancel(fastSwitchConnection) end)
+        fastSwitchConnection = nil
+    end
+end
+
+local function startFastSwitch()
+    stopFastSwitch()
+    fastSwitchConnection = task.spawn(function()
+        while SilentAimSettings.FastSwitchEnabled do
+            local char = LocalPlayer.Character
+            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+            if not char or not humanoid or humanoid.Health <= 0 then
+                task.wait(0.1)
+                continue
+            end
+            local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+            if not backpack then
+                task.wait(0.1)
+                continue
+            end
+            local list = SilentAimSettings.FastSwitchList
+            if not list or #list == 0 then
+                task.wait(0.1)
+                continue
+            end
+            for _, weaponName in ipairs(list) do
+                if not SilentAimSettings.FastSwitchEnabled then break end
+                local tool = backpack:FindFirstChild(weaponName) or char:FindFirstChild(weaponName)
+                if tool and tool:IsA("Tool") then
+                    pcall(function() humanoid:EquipTool(tool) end)
+                end
+                task.wait(SilentAimSettings.FastSwitchDelay)
+            end
+        end
+    end)
+end
+
+local function getBackpackGuns()
+    local out = {}
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+    if not backpack then return out end
+    for _, t in ipairs(backpack:GetChildren()) do
+        if t:IsA("Tool") then
+            table.insert(out, t.Name)
+        end
+    end
+    return out
+end
+
+-- NOCLIP (Stepped loop only)
+local noclipConnection = nil
+local function noclipStep()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.CanCollide then
+            part.CanCollide = false
+        end
+    end
+end
+local function startNoclip()
+    if noclipConnection then return end
+    noclipConnection = RunService.Stepped:Connect(noclipStep)
+end
+local function stopNoclip()
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+end
+
+-- NOCLIP PUNCH
+local punchBusy = false
+local function doNoclipPunch()
+    if punchBusy then return end
+    punchBusy = true
+    task.spawn(function()
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not char or not root then punchBusy = false return end
+
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = { char }
+        params.IgnoreWater = true
+        local dirs = {
+            Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
+            Vector3.new(0, 1, 0), Vector3.new(0, -1, 0),
+            Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
+        }
+        local near = false
+        for _, d in ipairs(dirs) do
+            if workspace:Raycast(root.Position, d.Unit * 3, params) then
+                near = true
+                break
+            end
+        end
+        if not near then
+            punchBusy = false
+            return
+        end
+
+        task.wait(0.3)
+
+        local stillNear = false
+        for _, d in ipairs(dirs) do
+            if workspace:Raycast(root.Position, d.Unit * 3, params) then
+                stillNear = true
+                break
+            end
+        end
+        if not stillNear then
+            punchBusy = false
+            return
+        end
+
+        noclipStep()
+        local conn
+        conn = RunService.Stepped:Connect(function()
+            noclipStep()
+        end)
+        task.wait(0.2)
+        conn:Disconnect()
+        punchBusy = false
+    end)
+end
+
+local function applySpeed(v)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed = v end
+end
+
+local function applyJumpPower(v)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.UseJumpPower = true
+        hum.JumpPower = v
+    end
+end
+
+local InvisibleRealCFrame = nil
+local InvisibleAnimationTrack = nil
+local InvisibleRenderKey = "SpentHubInvisibleRender"
+local InvisibleOriginalTransparency = {}
+local InvisibleOriginalCanCollide = {}
+
+local function loadInvisibleAnimation(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then return nil end
+    local isR15 = humanoid.RigType == Enum.HumanoidRigType.R15
+    local animation = Instance.new("Animation")
+    animation.AnimationId = isR15 and "rbxassetid://18665825805" or "rbxassetid://215384594"
+    local track = animator:LoadAnimation(animation)
+    track.Priority = Enum.AnimationPriority.Action4
+    track:Play(0, 0.001, 0)
+    animation:Destroy()
+    task.delay(0, function()
+        track.TimePosition = isR15 and 1.95 or 0.4
+    end)
+    return track
+end
+
+local function stopInvisible()
+    pcall(function() RunService:UnbindFromRenderStep(InvisibleRenderKey) end)
+    if InvisibleAnimationTrack then
+        InvisibleAnimationTrack:Stop()
+        InvisibleAnimationTrack:Destroy()
+        InvisibleAnimationTrack = nil
+    end
+    local character = LocalPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if rootPart and InvisibleRealCFrame then
+        rootPart.CFrame = InvisibleRealCFrame
+        local currentVelocity = rootPart.AssemblyLinearVelocity
+        rootPart.AssemblyLinearVelocity = Vector3.new(currentVelocity.X, 0, currentVelocity.Z)
+    end
+    InvisibleRealCFrame = nil
+    if character then
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") and part ~= rootPart then
+                if InvisibleOriginalTransparency[part] ~= nil then
+                    part.Transparency = InvisibleOriginalTransparency[part]
+                end
+                if InvisibleOriginalCanCollide[part] ~= nil then
+                    part.CanCollide = InvisibleOriginalCanCollide[part]
+                end
+            end
+        end
+        if rootPart then rootPart.Transparency = 0 end
+    end
+    table.clear(InvisibleOriginalTransparency)
+    table.clear(InvisibleOriginalCanCollide)
+end
+
+local function startInvisible()
+    local character = LocalPlayer.Character
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart then return end
+    InvisibleAnimationTrack = loadInvisibleAnimation(character)
+    InvisibleRealCFrame = nil
+    table.clear(InvisibleOriginalTransparency)
+    table.clear(InvisibleOriginalCanCollide)
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part ~= rootPart then
+            InvisibleOriginalTransparency[part] = part.Transparency
+            InvisibleOriginalCanCollide[part] = part.CanCollide
+            part.Transparency = 0.5
+            part.CanCollide = false
+        end
+    end
+    rootPart.Transparency = 1
+    pcall(function() RunService:UnbindFromRenderStep(InvisibleRenderKey) end)
+    RunService:BindToRenderStep(InvisibleRenderKey, Enum.RenderPriority.Camera.Value - 1, function()
+        if SilentAimSettings.InvisibleEnabled and InvisibleRealCFrame and rootPart.Parent then
+            rootPart.CFrame = InvisibleRealCFrame
+            if InvisibleAnimationTrack then
+                InvisibleAnimationTrack:AdjustWeight(0.001)
+            end
+        end
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not SilentAimSettings.InvisibleEnabled then return end
+    local character = LocalPlayer.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart then return end
+    local isR15 = humanoid.RigType == Enum.HumanoidRigType.R15
+    local dropOffset = humanoid.HipHeight + (rootPart.Size.Y / 2) - 1
+    InvisibleRealCFrame = rootPart.CFrame
+    rootPart.CFrame = (rootPart.CFrame - Vector3.new(0, dropOffset, 0)) * CFrame.Angles(math.rad(isR15 and 180 or 90), 0, 0)
+    local currentVelocity = rootPart.AssemblyLinearVelocity
+    rootPart.AssemblyLinearVelocity = Vector3.new(currentVelocity.X, 0, currentVelocity.Z)
+    if InvisibleAnimationTrack then
+        InvisibleAnimationTrack:AdjustWeight(100)
+    end
+end)
+
+local KorbloxMeshId = "rbxassetid://101851696"
+local KorbloxTextureId = "rbxassetid://101851254"
+
+local function applyKorblox(character)
+    local rightLeg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightUpperLeg")
+    if not rightLeg then return end
+    for _, v in ipairs(rightLeg:GetChildren()) do
+        if v:IsA("SpecialMesh") or v:IsA("CharacterMesh") then
+            v:Destroy()
+        end
+    end
+    local mesh = Instance.new("SpecialMesh")
+    mesh.MeshType = Enum.MeshType.FileMesh
+    mesh.MeshId = KorbloxMeshId
+    mesh.TextureId = KorbloxTextureId
+    mesh.Scale = Vector3.new(1, 1, 1)
+    mesh.Parent = rightLeg
+end
+
+local HeadlessMeshId = "rbxassetid://1095708"
+
+local function applyHeadless(character)
+    local head = character:FindFirstChild("Head")
+    if not head then return end
+    head.Transparency = 1
+    head.CanCollide = false
+    local face = head:FindFirstChildOfClass("Decal")
+    if face then face:Destroy() end
+    for _, v in ipairs(head:GetChildren()) do
+        if v:IsA("SpecialMesh") or v:IsA("CharacterMesh") then
+            v:Destroy()
+        end
+    end
+    local mesh = Instance.new("SpecialMesh")
+    mesh.MeshType = Enum.MeshType.FileMesh
+    mesh.MeshId = HeadlessMeshId
+    mesh.Scale = Vector3.new(0.001, 0.001, 0.001)
+    mesh.Parent = head
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(1)
+    if SilentAimSettings.NoclipEnabled then startNoclip() end
+    if SilentAimSettings.InvisibleEnabled then startInvisible() end
+    if SilentAimSettings.HeadlessEnabled then applyHeadless(char) end
+    if SilentAimSettings.KorbloxEnabled then applyKorblox(char) end
+    task.wait(0.1)
+    applySpeed(SilentAimSettings.SpeedValue)
+    applyJumpPower(SilentAimSettings.JumpPowerValue)
+    if SilentAimSettings.FastSwitchEnabled then startFastSwitch() end
+end)
+
+-- ============ OBSIDIAN GUI ============
+local Window = Library:CreateWindow({
+    Title = "SPENT HUB",
+    Footer = "spent hub",
+    NotifySide = "Right",
+    ShowCustomCursor = true,
+})
+
+local Tabs = {
+    Main = Window:AddTab("Main", "house"),
+    ESP = Window:AddTab("ESP", "eye"),
+    Visuals = Window:AddTab("Visuals", "user"),
+    Settings = Window:AddTab("Settings", "settings"),
+}
+
+-- MAIN TAB
+local SilentAimBox = Tabs.Main:AddLeftGroupbox("Silent Aim")
+SilentAimBox:AddToggle("SilentAimEnabled", {
+    Text = "Enabled",
+    Default = SilentAimSettings.Enabled,
+    Tooltip = "Master silent aim toggle",
+    Callback = function(v)
+        SilentAimSettings.Enabled = v
+        mouse_box.Visible = v and SilentAimSettings.ShowSilentAimTarget
+    end,
+})
+
+SilentAimBox:AddDropdown("TargetPart", {
+    Values = {"Head", "HumanoidRootPart", "Random"},
+    Default = SilentAimSettings.TargetPart,
+    Text = "Target Part",
+    Callback = function(v) SilentAimSettings.TargetPart = v end,
+})
+
+SilentAimBox:AddDropdown("Method", {
+    Values = {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"},
+    Default = SilentAimSettings.SilentAimMethod,
+    Text = "Method",
+    Callback = function(v) SilentAimSettings.SilentAimMethod = v end,
+})
+
+SilentAimBox:AddSlider("HitChance", {
+    Text = "Hit Chance",
+    Default = SilentAimSettings.HitChance,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(v) SilentAimSettings.HitChance = v end,
+})
+
+local FiltersBox = Tabs.Main:AddLeftGroupbox("Filters")
+FiltersBox:AddToggle("TeamCheck", {
+    Text = "Team Check",
+    Default = SilentAimSettings.TeamCheck,
+    Callback = function(v) SilentAimSettings.TeamCheck = v end,
+})
+FiltersBox:AddToggle("VisibleCheck", {
+    Text = "Visible Check",
+    Default = SilentAimSettings.VisibleCheck,
+    Callback = function(v) SilentAimSettings.VisibleCheck = v end,
+})
+
+local TeamBox = Tabs.Main:AddRightGroupbox("Target Team")
+TeamBox:AddToggle("TargetCop", {
+    Text = "Target Cop",
+    Default = SilentAimSettings.TargetCop,
+    Callback = function(v) SilentAimSettings.TargetCop = v end,
+})
+TeamBox:AddToggle("TargetInmate", {
+    Text = "Target Inmate",
+    Default = SilentAimSettings.TargetInmate,
+    Callback = function(v) SilentAimSettings.TargetInmate = v end,
+})
+TeamBox:AddToggle("TargetCriminal", {
+    Text = "Target Criminal",
+    Default = SilentAimSettings.TargetCriminal,
+    Callback = function(v) SilentAimSettings.TargetCriminal = v end,
+})
+
+local PredictBox = Tabs.Main:AddRightGroupbox("Prediction")
+PredictBox:AddToggle("MouseHitPred", {
+    Text = "Mouse.Hit Prediction",
+    Default = SilentAimSettings.MouseHitPrediction,
+    Callback = function(v) SilentAimSettings.MouseHitPrediction = v end,
+})
+PredictBox:AddSlider("PredAmount", {
+    Text = "Prediction x1000",
+    Default = math.floor(SilentAimSettings.MouseHitPredictionAmount * 1000),
+    Min = 165,
+    Max = 1000,
+    Rounding = 0,
+    Callback = function(v)
+        SilentAimSettings.MouseHitPredictionAmount = v / 1000
+        PredictionAmount = v / 1000
+    end,
+})
+PredictBox:AddToggle("ShowTarget", {
+    Text = "Show Silent Aim Target",
+    Default = SilentAimSettings.ShowSilentAimTarget,
+    Callback = function(v)
+        SilentAimSettings.ShowSilentAimTarget = v
+        mouse_box.Visible = v and SilentAimSettings.Enabled
+    end,
+})
+
+-- ESP TAB
+local EspMain = Tabs.ESP:AddLeftGroupbox("ESP")
+EspMain:AddToggle("ESPEnabled", {
+    Text = "Enable ESP",
+    Default = SilentAimSettings.ESP_Enabled,
+    Tooltip = "Master ESP toggle",
+    Callback = function(v) SilentAimSettings.ESP_Enabled = v end,
+})
+EspMain:AddToggle("ESPTeam", {
+    Text = "Team Colors",
+    Default = SilentAimSettings.ESP_Team,
+    Callback = function(v) SilentAimSettings.ESP_Team = v end,
+})
+
+local EspElems = Tabs.ESP:AddLeftGroupbox("Elements")
+EspElems:AddToggle("ESPHighlight", {
+    Text = "Highlight",
+    Default = SilentAimSettings.ESP_Highlight,
+    Callback = function(v) SilentAimSettings.ESP_Highlight = v end,
+})
+EspElems:AddToggle("ESPName", {
+    Text = "Name",
+    Default = SilentAimSettings.ESP_Name,
+    Callback = function(v) SilentAimSettings.ESP_Name = v end,
+})
+EspElems:AddToggle("ESPHealth", {
+    Text = "Health Bar",
+    Default = SilentAimSettings.ESP_Health,
+    Callback = function(v) SilentAimSettings.ESP_Health = v end,
+})
+EspElems:AddToggle("ESPTrace", {
+    Text = "Trace Line",
+    Default = SilentAimSettings.ESP_Trace,
+    Callback = function(v) SilentAimSettings.ESP_Trace = v end,
+})
+
+local EspRange = Tabs.ESP:AddRightGroupbox("Range")
+EspRange:AddSlider("MaxDistance", {
+    Text = "Max Distance",
+    Default = SilentAimSettings.ESP_MaxDistance,
+    Min = 100,
+    Max = 3000,
+    Rounding = 0,
+    Callback = function(v) SilentAimSettings.ESP_MaxDistance = v end,
+})
+
+-- VISUALS TAB
+local PlayerBox = Tabs.Visuals:AddLeftGroupbox("Player Settings")
+PlayerBox:AddToggle("Noclip", {
+    Text = "Noclip",
+    Default = SilentAimSettings.NoclipEnabled,
+    Callback = function(v)
+        SilentAimSettings.NoclipEnabled = v
+        if v then startNoclip() else stopNoclip() end
+    end,
+})
+PlayerBox:AddSlider("Speed", {
+    Text = "Speed",
+    Default = SilentAimSettings.SpeedValue,
+    Min = 8,
+    Max = 200,
+    Rounding = 0,
+    Callback = function(v)
+        SilentAimSettings.SpeedValue = v
+        applySpeed(v)
+    end,
+})
+PlayerBox:AddSlider("JumpPower", {
+    Text = "Jump Power",
+    Default = SilentAimSettings.JumpPowerValue,
+    Min = 50,
+    Max = 500,
+    Rounding = 0,
+    Callback = function(v)
+        SilentAimSettings.JumpPowerValue = v
+        applyJumpPower(v)
+    end,
+})
+PlayerBox:AddToggle("Invisible", {
+    Text = "Invisible",
+    Default = SilentAimSettings.InvisibleEnabled,
+    Callback = function(v)
+        SilentAimSettings.InvisibleEnabled = v
+        if v then startInvisible() else stopInvisible() end
+    end,
+})
+
+local VisualBox = Tabs.Visuals:AddRightGroupbox("Visual")
+VisualBox:AddToggle("Korblox", {
+    Text = "Korblox",
+    Default = SilentAimSettings.KorbloxEnabled,
+    Callback = function(v)
+        SilentAimSettings.KorbloxEnabled = v
+        local char = LocalPlayer.Character
+        if v and char then applyKorblox(char) end
+    end,
+})
+VisualBox:AddToggle("Headless", {
+    Text = "Headless",
+    Default = SilentAimSettings.HeadlessEnabled,
+    Callback = function(v)
+        SilentAimSettings.HeadlessEnabled = v
+        local char = LocalPlayer.Character
+        if v and char then applyHeadless(char) end
+    end,
+})
+
+-- SETTINGS TAB (FOV + Fast Switch + Whitelist + Menu)
+local FovBox = Tabs.Settings:AddLeftGroupbox("FOV Circle")
+FovBox:AddToggle("FovVisible", {
+    Text = "Fov Circle",
+    Default = SilentAimSettings.FOVVisible,
+    Callback = function(v)
+        SilentAimSettings.FOVVisible = v
+        fov_circle.Visible = v
+    end,
+})
+FovBox:AddToggle("FovCenter", {
+    Text = "Center FOV",
+    Default = SilentAimSettings.FOVCenter,
+    Callback = function(v) SilentAimSettings.FOVCenter = v end,
+})
+FovBox:AddSlider("FovRadius", {
+    Text = "Fov Circle Size",
+    Default = SilentAimSettings.FOVRadius,
+    Min = 0,
+    Max = 400,
+    Rounding = 0,
+    Callback = function(v)
+        SilentAimSettings.FOVRadius = v
+        fov_circle.Radius = v
+    end,
+})
+
+local FastBox = Tabs.Settings:AddRightGroupbox("Fast Switch")
+FastBox:AddToggle("FastSwitch", {
+    Text = "Enable Fast Switch",
+    Default = SilentAimSettings.FastSwitchEnabled,
+    Callback = function(v)
+        SilentAimSettings.FastSwitchEnabled = v
+        if v then startFastSwitch() else stopFastSwitch() end
+    end,
+})
+FastBox:AddKeyPicker("FastSwitchKey", {
+    Default = SilentAimSettings.FastSwitchHotkey.Name,
+    Text = "Set Hotkey",
+    Mode = "Toggle",
+    Callback = function(v)
+        SilentAimSettings.FastSwitchHotkey = v
+    end,
+})
+FastBox:AddSlider("FastSwitchDelay", {
+    Text = "Fast Switch Speed x100",
+    Default = math.floor(SilentAimSettings.FastSwitchDelay * 100),
+    Min = 1,
+    Max = 50,
+    Rounding = 0,
+    Callback = function(v) SilentAimSettings.FastSwitchDelay = v / 100 end,
+})
+
+-- Gun list (static, matches FIXED_GUN_LIST)
+local FIXED_GUN_LIST = {"M9", "Revolver", "Remington 870", "MP5", "M4A1", "M700", "AK-47"}
+for _, gunName in ipairs(FIXED_GUN_LIST) do
+    FastBox:AddToggle("Gun_" .. gunName, {
+        Text = gunName,
+        Default = table.find(SilentAimSettings.FastSwitchList, gunName) ~= nil,
+        Callback = function(v)
+            local found = table.find(SilentAimSettings.FastSwitchList, gunName)
+            if v and not found then
+                table.insert(SilentAimSettings.FastSwitchList, gunName)
+            elseif not v and found then
+                table.remove(SilentAimSettings.FastSwitchList, found)
+            end
+        end,
+    })
+end
+
+local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu")
+MenuBox:AddButton({
+    Text = "Unload",
+    Func = function()
+        Library:Unload()
+        pcall(function() fov_circle:Remove() end)
+        pcall(function() mouse_box:Remove() end)
+        stopNoclip()
+        stopInvisible()
+        stopFastSwitch()
+        for _, p in ipairs(Players:GetPlayers()) do clearESP(p) end
+        print("SPENT HUB unloaded.")
+    end,
+})
+
+-- Whitelist in Settings right groupbox
+local WhitelistBox = Tabs.Settings:AddRightGroupbox("Whitelist Player")
+local wlRefreshButton = WhitelistBox:AddButton({
+    Text = "Refresh Player List",
+    Func = function()
+        -- Obsidian doesn't support dynamic row rebuilds the same way;
+        -- use the input below to add names instead.
+    end,
+})
+WhitelistBox:AddInput("WhitelistName", {
+    Text = "Add Player by Name",
+    Default = "",
+    Placeholder = "username",
+    Finished = true,
+    Callback = function(text)
+        if text and text ~= "" then
+            addWhitelist(text)
+            Library:Notify("Whitelisted " .. text, 3)
+        end
+    end,
+})
+WhitelistBox:AddInput("UnwhitelistName", {
+    Text = "Remove Player by Name",
+    Default = "",
+    Placeholder = "username",
+    Finished = true,
+    Callback = function(text)
+        if text and text ~= "" then
+            removeWhitelist(text)
+            Library:Notify("Un-whitelisted " .. text, 3)
+        end
+    end,
+})
+
+-- Theme + Save Manager
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+ThemeManager:SetFolder("SpentHub")
+SaveManager:SetFolder("SpentHub")
+SaveManager:BuildConfigSection(Tabs.Settings)
+ThemeManager:ApplyToTab(Tabs.Settings)
+
+Library:Notify("SPENT HUB loaded", 3)
+
+-- FOV / ESP render loop
+task.spawn(function()
+    RenderStepped:Connect(function()
+        if SilentAimSettings.ShowSilentAimTarget and SilentAimSettings.Enabled then
+            if currentTarget and currentTarget.Parent then
+                local Root = currentTarget.Parent and currentTarget.Parent.PrimaryPart or currentTarget
+                local vp, on = WorldToViewportPoint(Camera, Root.Position)
+                mouse_box.Visible = on
+                mouse_box.Position = Vector2.new(vp.X, vp.Y)
+            else
+                mouse_box.Visible = false
+                mouse_box.Position = Vector2.new()
+            end
+        else
+            mouse_box.Visible = false
+        end
+
+        if SilentAimSettings.FOVVisible then
+            fov_circle.Visible = true
+            fov_circle.Radius = SilentAimSettings.FOVRadius
+            if SilentAimSettings.FOVCenter then
+                fov_circle.Position = getCenter()
+            else
+                fov_circle.Position = getCursorPos()
+            end
+            fov_circle.Color = (currentTarget and currentTarget.Parent) and TARGET_LOCK_COLOR or RING_IDLE_COLOR
+        else
+            fov_circle.Visible = false
+        end
+        updateESP()
+    end)
+end)
+
+-- keybinds (Obsidian KeyPicker handles the fast-switch hotkey; F and END handled here)
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == SilentAimSettings.FastSwitchHotkey then
+        SilentAimSettings.FastSwitchEnabled = not SilentAimSettings.FastSwitchEnabled
+        if SilentAimSettings.FastSwitchEnabled then
+            startFastSwitch()
+        else
+            stopFastSwitch()
+        end
+        Library:Notify("Fast Switch " .. (SilentAimSettings.FastSwitchEnabled and "enabled" or "disabled"), 2)
+    end
+    if input.KeyCode == Enum.KeyCode.F and SilentAimSettings.NoclipPunchEnabled then
+        doNoclipPunch()
+    end
+    if input.KeyCode == Enum.KeyCode.End then
+        Library:Unload()
+        pcall(function() fov_circle:Remove() end)
+        pcall(function() mouse_box:Remove() end)
+        stopNoclip()
+        stopInvisible()
+        stopFastSwitch()
+        for _, p in ipairs(Players:GetPlayers()) do clearESP(p) end
+        print("SPENT HUB unloaded.")
+    end
+end)
+
+-- Noclip Punch toggle (put it in Main because it's a combat toggle)
+local PunchBox = Tabs.Main:AddRightGroupbox("Noclip Punch")
+PunchBox:AddToggle("NoclipPunch", {
+    Text = "Noclip Punch",
+    Default = SilentAimSettings.NoclipPunchEnabled,
+    Tooltip = "Press F near a wall. 0.3s arm, 0.2s noclip window.",
+    Callback = function(v) SilentAimSettings.NoclipPunchEnabled = v end,
+})
+
+-- Autoshoot toggle (Main)
+local AutoBox = Tabs.Main:AddLeftGroupbox("Autoshoot")
+AutoBox:AddToggle("Autoshoot", {
+    Text = "Autoshoot",
+    Default = SilentAimSettings.AutoshootEnabled,
+    Tooltip = "Fires the equipped gun at the silent aim target",
+    Callback = function(v) SilentAimSettings.AutoshootEnabled = v end,
+})
+
+-- silent aim hooks (unchanged)
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+    local Method = getnamecallmethod()
+    local Args = {...}
+    local self = Args[1]
+    local chance = CalculateChance(SilentAimSettings.HitChance)
+    if SilentAimSettings.Enabled and self == workspace and not checkcaller() and chance == true and not AutoShootRaycastInProgress then
+        if Method == "FindPartOnRayWithIgnoreList" and SilentAimSettings.SilentAimMethod == Method then
+            if ValidateArguments(Args, ExpectedArguments.FindPartOnRayWithIgnoreList) then
+                local r = Args[2]
+                local hit = currentTarget
+                if hit and hit.Parent then
+                    Args[2] = Ray.new(r.Origin, getDirection(r.Origin, hit.Position))
+                    return oldNamecall(unpack(Args))
+                end
+            end
+        elseif Method == "FindPartOnRayWithWhitelist" and SilentAimSettings.SilentAimMethod == Method then
+            if ValidateArguments(Args, ExpectedArguments.FindPartOnRayWithWhitelist) then
+                local r = Args[2]
+                local hit = currentTarget
+                if hit and hit.Parent then
+                    Args[2] = Ray.new(r.Origin, getDirection(r.Origin, hit.Position))
+                    return oldNamecall(unpack(Args))
+                end
+            end
+        elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and SilentAimSettings.SilentAimMethod:lower() == Method:lower() then
+            if ValidateArguments(Args, ExpectedArguments.FindPartOnRay) then
+                local r = Args[2]
+                local hit = currentTarget
+                if hit and hit.Parent then
+                    Args[2] = Ray.new(r.Origin, getDirection(r.Origin, hit.Position))
+                    return oldNamecall(unpack(Args))
+                end
+            end
+        elseif Method == "Raycast" and SilentAimSettings.SilentAimMethod == Method then
+            if ValidateArguments(Args, ExpectedArguments.Raycast) then
+                local o = Args[2]
+                local hit = currentTarget
+                if hit and hit.Parent then
+                    Args[3] = getDirection(o, hit.Position)
+                    return oldNamecall(unpack(Args))
+                end
+            end
+        end
+    end
+    return oldNamecall(...)
+end))
+
+local oldIndex = nil
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, i)
+    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" and currentTarget and currentTarget.Parent then
+        local hit = currentTarget
+        if i == "Target" or i == "target" then
+            return hit
+        elseif i == "Hit" or i == "hit" then
+            if SilentAimSettings.MouseHitPrediction then
+                return hit.CFrame + (hit.Velocity * PredictionAmount)
+            end
+            return hit.CFrame
+        elseif i == "X" or i == "x" then
+            return self.X
+        elseif i == "Y" or i == "y" then
+            return self.Y
+        elseif i == "UnitRay" then
+            return Ray.new(self.Origin, (self.Hit - self.Origin).Unit)
+        end
+    end
+    return oldIndex(self, i)
+end))
