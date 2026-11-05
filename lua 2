@@ -5,9 +5,9 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
--- startup
 local startupGui = Instance.new("ScreenGui")
 startupGui.Name = "SpentHubStartup"
 startupGui.ResetOnSpawn = false
@@ -28,12 +28,6 @@ local startupStroke = Instance.new("UIStroke", startupFrame)
 startupStroke.Color = Color3.fromRGB(255, 182, 193)
 startupStroke.Thickness = 1.5
 startupStroke.Transparency = 0.4
-
-local startupGlow = Instance.new("UIStroke", startupFrame)
-startupGlow.Color = Color3.fromRGB(255, 182, 193)
-startupGlow.Thickness = 6
-startupGlow.Transparency = 0.75
-Instance.new("UICorner", startupGlow).CornerRadius = UDim.new(0.2, 0)
 
 local startupTitle = Instance.new("TextLabel", startupFrame)
 startupTitle.Size = UDim2.new(1, -20, 0, 26)
@@ -68,31 +62,12 @@ startupFill.BackgroundColor3 = Color3.fromRGB(255, 182, 193)
 startupFill.BorderSizePixel = 0
 Instance.new("UICorner", startupFill).CornerRadius = UDim.new(1, 0)
 
-local fillGradient = Instance.new("UIGradient", startupFill)
-fillGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 182, 193)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 200, 220)),
-})
-
 TweenService:Create(startupFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
     Position = UDim2.new(0.5, -150, 0, 30)
 }):Play()
 TweenService:Create(startupFill, TweenInfo.new(3, Enum.EasingStyle.Linear), {
     Size = UDim2.new(1, 0, 1, 0)
 }):Play()
-
-task.spawn(function()
-    for i = 1, 12 do
-        pcall(function()
-            TweenService:Create(startupGlow, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.3}):Play()
-        end)
-        task.wait(0.25)
-        pcall(function()
-            TweenService:Create(startupGlow, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.75}):Play()
-        end)
-        task.wait(0.25)
-    end
-end)
 
 task.wait(3)
 
@@ -103,15 +78,11 @@ TweenService:Create(startupFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quart, En
 TweenService:Create(startupTitle, TweenInfo.new(0.35), {TextTransparency = 1}):Play()
 TweenService:Create(startupSub, TweenInfo.new(0.35), {TextTransparency = 1}):Play()
 TweenService:Create(startupStroke, TweenInfo.new(0.35), {Transparency = 1}):Play()
-TweenService:Create(startupGlow, TweenInfo.new(0.35), {Transparency = 1}):Play()
 task.wait(0.4)
 pcall(function() startupGui:Destroy() end)
 
--- settings
 local SilentAimSettings = {
     Enabled = false,
-    ClassName = "Universal Silent Aim - Averiias, Stefanuk12, xaxa",
-    ToggleKey = "RightAlt",
     TeamCheck = false,
     VisibleCheck = false,
     TargetPart = "HumanoidRootPart",
@@ -138,6 +109,7 @@ local SilentAimSettings = {
     ESP_NameColor = Color3.fromRGB(255, 255, 255),
     ESP_HPColor = Color3.fromRGB(80, 255, 100),
     ESP_TraceColor = Color3.fromRGB(255, 255, 255),
+    AutoshootEnabled = false,
 }
 getgenv().SilentAimSettings = SilentAimSettings
 
@@ -183,8 +155,6 @@ local Theme = {
     ICON = "S",
 }
 
-local MainFileName = "UniversalSilentAim"
-local SelectedFile, FileToSave = "", ""
 local Camera = workspace.CurrentCamera
 local GuiService = game:GetService("GuiService")
 local HttpService = game:GetService("HttpService")
@@ -200,7 +170,7 @@ local ValidTargetParts = {"Head", "HumanoidRootPart"}
 local PredictionAmount = 0.165
 
 local mouse_box = Drawing.new("Square")
-mouse_box.Visible = true
+mouse_box.Visible = false
 mouse_box.ZIndex = 999
 mouse_box.Color = Color3.fromRGB(255, 182, 193)
 mouse_box.Thickness = 2
@@ -233,45 +203,6 @@ local function CalculateChance(Percentage)
     local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
     lastRollResult = chance <= Percentage / 100
     return lastRollResult
-end
-
-do
-    if not isfolder(MainFileName) then makefolder(MainFileName) end
-    local sub = MainFileName .. "/" .. tostring(game.PlaceId)
-    if not isfolder(sub) then makefolder(sub) end
-end
-
-local Files = listfiles(MainFileName .. "/" .. tostring(game.PlaceId))
-
-local function GetFiles()
-    local out = {}
-    for i = 1, #Files do
-        local file = Files[i]
-        if file:sub(-4) == ".lua" then
-            local pos = file:find(".lua", 1, true)
-            local start = pos
-            local ch = file:sub(pos, pos)
-            while ch ~= "/" and ch ~= "\\" and ch ~= "" do
-                pos = pos - 1
-                ch = file:sub(pos, pos)
-            end
-            if ch == "/" or ch == "\\" then
-                table.insert(out, file:sub(pos + 1, start - 1))
-            end
-        end
-    end
-    return out
-end
-
-local function UpdateFile(FileName)
-    assert(FileName or FileName == "string", "oopsies")
-    writefile(MainFileName .. "/" .. tostring(game.PlaceId) .. "/" .. FileName .. ".lua", HttpService:JSONEncode(SilentAimSettings))
-end
-
-local function LoadFile(FileName)
-    assert(FileName or FileName == "string", "oopsies")
-    local data = HttpService:JSONDecode(readfile(MainFileName .. "/" .. tostring(game.PlaceId) .. "/" .. FileName .. ".lua"))
-    for k, v in next, data do SilentAimSettings[k] = v end
 end
 
 local function getPositionOnScreen(Vector)
@@ -344,6 +275,8 @@ local function matchesTeam(Player)
     return true
 end
 
+local currentTarget = nil
+
 local function getClosestPlayer()
     if not SilentAimSettings.TargetPart then return end
     local Closest, DistanceToMouse
@@ -363,19 +296,218 @@ local function getClosestPlayer()
         if not OnScreen then continue end
         local Distance = (origin - ScreenPosition).Magnitude
         if Distance <= (DistanceToMouse or SilentAimSettings.FOVRadius or 2000) then
-            Closest = ((SilentAimSettings.TargetPart == "Random" and Character[ValidTargetParts[math.random(1, #ValidTargetParts)]]) or Character[SilentAimSettings.TargetPart])
+            local targetPartName = SilentAimSettings.TargetPart
+            local partInstance
+            if targetPartName == "Random" then
+                partInstance = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]]
+            else
+                partInstance = Character[targetPartName]
+            end
+            Closest = partInstance
             DistanceToMouse = Distance
         end
     end
     return Closest
 end
 
+task.spawn(function()
+    while task.wait(0.1) do
+        if SilentAimSettings.Enabled then
+            currentTarget = getClosestPlayer()
+        else
+            currentTarget = nil
+        end
+    end
+end)
+
+local shootRemote = nil
+local AutoShootGunTracers = nil
+
+pcall(function()
+    local gunRemotes = ReplicatedStorage:WaitForChild("GunRemotes", 5)
+    if gunRemotes then
+        shootRemote = gunRemotes:WaitForChild("ShootEvent", 5)
+    end
+end)
+
+pcall(function()
+    local sharedModules = ReplicatedStorage:WaitForChild("SharedModules", 5)
+    local tracersModule = sharedModules and sharedModules:WaitForChild("GunTracers", 5)
+    if tracersModule then
+        AutoShootGunTracers = require(tracersModule)
+    end
+end)
+
+local function getEquippedWeapon()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Tool") then return child end
+    end
+    return nil
+end
+
+local autoShootParams = RaycastParams.new()
+autoShootParams.FilterType = Enum.RaycastFilterType.Exclude
+autoShootParams.CollisionGroup = "ClientBullet"
+
+local lastAutoShotByWeapon = {}
+local AutoShootRaycastInProgress = false
+local gunModNames = {"AK-47", "Remington 870", "M9", "M700", "M4A1", "FAL", "MP5", "Revolver"}
+
+local function getSmoothedTargetPosition()
+    if currentTarget and currentTarget.Parent then
+        return currentTarget.Position
+    end
+    return nil
+end
+
+local function getRedirectedDirectionForAutoShoot(Origin)
+    local pos = getSmoothedTargetPosition()
+    if not pos then return nil end
+    local OriginalDistance = (pos - Origin).Magnitude
+    if OriginalDistance == 0 then OriginalDistance = 1000 end
+    local PartSize = currentTarget.Size
+    local SpreadX = (math.random() - 0.5) * (PartSize.X + 2) * 0.2
+    local SpreadY = (math.random() - 0.5) * (PartSize.Y + 2) * 0.2
+    local SpreadZ = (math.random() - 0.5) * (PartSize.Z + 2) * 0.2
+    local TargetPosition = pos + Vector3.new(SpreadX, SpreadY, SpreadZ)
+    local NewDirection = (TargetPosition - Origin)
+    local NewDistance = NewDirection.Magnitude
+    if NewDistance == 0 then return nil end
+    return NewDirection.Unit * math.max(OriginalDistance, NewDistance)
+end
+
+local function updateAmmoLabel(weapon, currentAmmo)
+    local ok, gunFrame = pcall(function()
+        return LocalPlayer.PlayerGui:WaitForChild("Home", 3)
+            :WaitForChild("hud", 3)
+            :WaitForChild("BottomRightFrame", 3)
+            :WaitForChild("GunFrame", 3)
+    end)
+    if not ok or not gunFrame then return end
+    local bulletsLabel = gunFrame:FindFirstChild("BulletsLabel")
+    if not bulletsLabel then return end
+    local behavior = weapon:GetAttribute("Behavior")
+    if behavior == "Sniper" then
+        local stored = weapon:GetAttribute("StoredAmmo") or 0
+        bulletsLabel.Text = currentAmmo .. " | " .. stored
+    else
+        local maxAmmo = weapon:GetAttribute("MaxAmmo") or currentAmmo
+        bulletsLabel.Text = currentAmmo .. "/" .. maxAmmo
+    end
+end
+
+local function castPelletRayAutoShoot(weapon, origin, aimPoint, spreadRadius)
+    local roll = math.random()
+    local behavior = weapon:GetAttribute("Behavior")
+    if behavior == "Sniper" or behavior == "Shotgun" then
+        roll = math.sqrt(roll)
+    end
+    local range = weapon:GetAttribute("Range") or 1000
+    local lookCFrame = CFrame.new(origin, aimPoint)
+    local rollAngle = 360 - 720 * math.random()
+    local direction = (lookCFrame * CFrame.Angles(0, 0, math.rad(rollAngle)) * CFrame.Angles(0, roll * spreadRadius, 0)).LookVector * range
+    AutoShootRaycastInProgress = true
+    local result = workspace:Raycast(origin, direction, autoShootParams)
+    AutoShootRaycastInProgress = false
+    local hitInstance = result and result.Instance or nil
+    local hitPosition = result and result.Position or (origin + direction)
+    return hitInstance, hitPosition
+end
+
+local function performAutoShot(weapon)
+    if not weapon or not shootRemote then return end
+    if not currentTarget or not currentTarget.Parent then return end
+    local behavior = weapon:GetAttribute("Behavior")
+    local reloadSession = weapon:GetAttribute("Local_ReloadSession") or 0
+    local currentAmmo = weapon:GetAttribute("Local_CurrentAmmo") or 0
+    if reloadSession ~= 0 then return end
+    if currentAmmo <= 0 then return end
+    local char = LocalPlayer.Character
+    local head = char and char:FindFirstChild("Head")
+    if not head then return end
+    local origin = head.Position
+    autoShootParams.FilterDescendantsInstances = { char }
+    local aimPoint = currentTarget.Position
+    local redirected = getRedirectedDirectionForAutoShoot(origin)
+    if redirected then
+        aimPoint = origin + redirected
+    end
+    local projectileCount = weapon:GetAttribute("ProjectileCount") or 1
+    local spreadRadius = weapon:GetAttribute("SpreadRadius") or 0
+    local muzzle = weapon:FindFirstChild("Muzzle")
+    local muzzlePos = muzzle and muzzle.Position or origin
+    local bulletData = {}
+    for i = 1, projectileCount do
+        local hitInstance, hitPosition = castPelletRayAutoShoot(weapon, origin, aimPoint, spreadRadius)
+        table.insert(bulletData, { origin, hitPosition, hitInstance })
+        if AutoShootGunTracers then
+            pcall(function()
+                if behavior == "Sniper" then
+                    AutoShootGunTracers.createSniper(muzzlePos, hitPosition)
+                elseif behavior == "Taser" then
+                    AutoShootGunTracers.createTaser(muzzlePos, hitPosition)
+                else
+                    AutoShootGunTracers.createBullet(muzzlePos, hitPosition)
+                end
+            end)
+        end
+    end
+    shootRemote:FireServer(bulletData)
+    local newAmmo = currentAmmo - 1
+    weapon:SetAttribute("Local_CurrentAmmo", newAmmo)
+    updateAmmoLabel(weapon, newAmmo)
+    pcall(function()
+        local handle = weapon:FindFirstChild("Handle")
+        if handle then
+            local shootSound = handle:FindFirstChild("ShootSound")
+            if shootSound then
+                local cloned = shootSound:Clone()
+                cloned.Parent = handle
+                cloned:Play()
+                game:GetService("Debris"):AddItem(cloned, 5)
+            end
+            local flare = handle:FindFirstChild("Flare")
+            if flare then
+                flare.Enabled = true
+                task.delay(0.05, function()
+                    if flare then flare.Enabled = false end
+                end)
+            end
+        end
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not shootRemote then return end
+    if not SilentAimSettings.Enabled or not SilentAimSettings.AutoshootEnabled then return end
+    if not currentTarget or not currentTarget.Parent then return end
+    local char = LocalPlayer.Character
+    local myHumanoid = char and char:FindFirstChildOfClass("Humanoid")
+    if not myHumanoid or myHumanoid.Health <= 0 then return end
+    local weapon = getEquippedWeapon()
+    if not weapon then return end
+    if not table.find(gunModNames, weapon.Name) then return end
+    local fireRate = weapon:GetAttribute("FireRate") or 0.1
+    local weaponAutoFireAttr = weapon:GetAttribute("AutoFire")
+    if not weaponAutoFireAttr then
+        fireRate = fireRate * 1.5
+    end
+    if weapon.Name == "Remington 870" then
+        fireRate = 0.45
+    end
+    local lastShotTime = lastAutoShotByWeapon[weapon.Name] or 0
+    if (tick() - lastShotTime) < fireRate then return end
+    lastAutoShotByWeapon[weapon.Name] = tick()
+    performAutoShot(weapon)
+end)
+
 local espCache = {}
 local ESP_UPDATE_INTERVAL = 1 / 30
 local HIGHLIGHT_CHECK_INTERVAL = 0.1
 local LOCK_CACHE_INTERVAL = 0.1
 local DISTANCE_CULL = 1.2
-
 local lastESPUpdate, lastHighlightUpdate, lastLockCheck = 0, 0, 0
 local cachedLockedChar = nil
 
@@ -383,7 +515,7 @@ local function isLockedChar(char)
     local now = tick()
     if now - lastLockCheck >= LOCK_CACHE_INTERVAL then
         lastLockCheck = now
-        local cur = getClosestPlayer()
+        local cur = currentTarget
         cachedLockedChar = (cur and cur.Parent) or nil
     end
     return cachedLockedChar == char
@@ -544,7 +676,6 @@ local function updateESP()
     end
 end
 
--- GUI
 local gui = Instance.new("ScreenGui")
 gui.Name = "SpentHub"
 gui.ResetOnSpawn = false
@@ -647,7 +778,7 @@ local title = Instance.new("TextLabel", titleBar)
 title.Size = UDim2.new(1, -240, 1, 0)
 title.Position = UDim2.new(0, 50, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "SPENT HUB · v18"
+title.Text = "SPENT HUB · v19"
 title.TextColor3 = Theme.TEXT_STRONG
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -694,13 +825,11 @@ local function makeTitleBtn(symbol, orderX)
     btn.AutoButtonColor = false
     btn.ZIndex = 103
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0.35, 0)
-
     local btnGlow = Instance.new("UIStroke", btn)
     btnGlow.Color = Theme.ACCENT
     btnGlow.Thickness = 2
     btnGlow.Transparency = 1
     Instance.new("UICorner", btnGlow).CornerRadius = UDim.new(0.35, 0)
-
     btn.MouseButton1Click:Connect(function() createRipple(btn, UDim2.new(0.5, 0, 0.5, 0)) end)
     btn.MouseEnter:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
@@ -741,7 +870,6 @@ statusLabel.TextSize = 10
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.ZIndex = 102
 
--- LEFT SIDEBAR (tabs)
 local sidebar = Instance.new("Frame", main)
 sidebar.Size = UDim2.new(0, 150, 1, -84)
 sidebar.Position = UDim2.new(0, 10, 0, 72)
@@ -776,7 +904,6 @@ sidebarPad.PaddingTop = UDim.new(0, 32)
 sidebarPad.PaddingLeft = UDim.new(0, 8)
 sidebarPad.PaddingRight = UDim.new(0, 8)
 
--- divider between sidebar and content
 local divider = Instance.new("Frame", main)
 divider.Size = UDim2.new(0, 1, 1, -96)
 divider.Position = UDim2.new(0, 165, 0, 78)
@@ -785,7 +912,6 @@ divider.BackgroundTransparency = 0.4
 divider.BorderSizePixel = 0
 divider.ZIndex = 102
 
--- MIDDLE CONTENT
 local content = Instance.new("Frame", main)
 content.Size = UDim2.new(1, -388, 1, -84)
 content.Position = UDim2.new(0, 176, 0, 72)
@@ -807,13 +933,6 @@ accentLine.BackgroundColor3 = Theme.ACCENT
 accentLine.BorderSizePixel = 0
 accentLine.ZIndex = 102
 Instance.new("UICorner", accentLine).CornerRadius = UDim.new(1, 0)
-
-local accentGradient = Instance.new("UIGradient", accentLine)
-accentGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Theme.GRADIENT_1),
-    ColorSequenceKeypoint.new(0.5, Theme.ACCENT_LIGHT),
-    ColorSequenceKeypoint.new(1, Theme.GRADIENT_2),
-})
 
 local accentGlow = Instance.new("UIStroke", accentLine)
 accentGlow.Color = Theme.ACCENT
@@ -857,7 +976,6 @@ local scrollLayout = Instance.new("UIListLayout", scroll)
 scrollLayout.Padding = UDim.new(0, 7)
 scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- RIGHT DOCK (FOV Circle permanent panel)
 local rightDock = Instance.new("Frame", main)
 rightDock.Size = UDim2.new(0, 200, 1, -84)
 rightDock.Position = UDim2.new(1, -210, 0, 72)
@@ -976,8 +1094,6 @@ local function pickIcon(text)
     if lower:find("disabled") then return NOTIF_ICON.off end
     if lower:find("loaded") then return NOTIF_ICON.load end
     if lower:find("saved") or lower:find("created") then return NOTIF_ICON.save end
-    if lower:find("accent") then return NOTIF_ICON.accent end
-    if lower:find("starting") or lower:find("spent hub") then return NOTIF_ICON.boot end
     if lower:find("fail") or lower:find("error") then return NOTIF_ICON.error end
     return NOTIF_ICON.info
 end
@@ -1148,7 +1264,6 @@ local function notify(text, color)
     end)
 end
 
--- widget builders (take parent as first arg so we can put them in either scroll)
 local function makeSection(parent, text)
     local s = Instance.new("TextLabel", parent)
     s.Size = UDim2.new(1, 0, 0, 18)
@@ -1286,12 +1401,6 @@ local function makeSlider(parent, name, min, max, default, callback)
     fill.BorderSizePixel = 0
     Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
-    local fillGradient = Instance.new("UIGradient", fill)
-    fillGradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Theme.ACCENT),
-        ColorSequenceKeypoint.new(1, Theme.ACCENT_LIGHT),
-    })
-
     local dragging = false
     bar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true end
@@ -1408,6 +1517,377 @@ local function makeDropdown(parent, name, values, current, callback)
     end)
 end
 
+local whitelistPlayerRows = {}
+
+local function rebuildWhitelistPlayerList(container)
+    for _, child in ipairs(container:GetChildren()) do
+        if child:IsA("Frame") or child:IsA("TextLabel") then
+            child:Destroy()
+        end
+    end
+    table.clear(whitelistPlayerRows)
+
+    local allPlayers = Players:GetPlayers()
+    if #allPlayers == 0 then
+        local empty = Instance.new("TextLabel", container)
+        empty.Size = UDim2.new(1, 0, 0, 24)
+        empty.BackgroundTransparency = 1
+        empty.Text = "  no players in server"
+        empty.TextColor3 = Theme.TEXT_DIM
+        empty.Font = Enum.Font.Gotham
+        empty.TextSize = 10
+        empty.TextXAlignment = Enum.TextXAlignment.Left
+        return
+    end
+
+    for _, plr in ipairs(allPlayers) do
+        if plr == LocalPlayer then continue end
+
+        local isWL = Whitelist[string.lower(plr.Name)] == true
+
+        local row = Instance.new("Frame", container)
+        row.Size = UDim2.new(1, 0, 0, 36)
+        row.BackgroundColor3 = Theme.BG_OPT
+        row.BackgroundTransparency = 0.08
+        row.BorderSizePixel = 0
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0.18, 0)
+
+        local rowStroke = Instance.new("UIStroke", row)
+        rowStroke.Color = isWL and Theme.ACCENT or Theme.BORDER
+        rowStroke.Thickness = 0.5
+        rowStroke.Transparency = isWL and 0.3 or 0.6
+
+        local nameLbl = Instance.new("TextLabel", row)
+        nameLbl.Size = UDim2.new(1, -60, 0.5, 0)
+        nameLbl.Position = UDim2.new(0, 10, 0, 1)
+        nameLbl.BackgroundTransparency = 1
+        nameLbl.Text = plr.DisplayName
+        nameLbl.TextColor3 = isWL and Theme.ACCENT or Theme.TEXT
+        nameLbl.Font = Enum.Font.GothamMedium
+        nameLbl.TextSize = 11
+        nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+        local userLbl = Instance.new("TextLabel", row)
+        userLbl.Size = UDim2.new(1, -60, 0.5, 0)
+        userLbl.Position = UDim2.new(0, 10, 0.5, -1)
+        userLbl.BackgroundTransparency = 1
+        userLbl.Text = "@" .. plr.Name
+        userLbl.TextColor3 = Theme.TEXT_DIM
+        userLbl.Font = Enum.Font.Gotham
+        userLbl.TextSize = 10
+        userLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+        local ind = Instance.new("Frame", row)
+        ind.Size = UDim2.new(0, 34, 0, 16)
+        ind.Position = UDim2.new(1, -44, 0.5, -8)
+        ind.BackgroundColor3 = isWL and Theme.ACCENT or Color3.fromRGB(45, 45, 55)
+        ind.BorderSizePixel = 0
+        Instance.new("UICorner", ind).CornerRadius = UDim.new(1, 0)
+
+        local dot = Instance.new("Frame", ind)
+        dot.Size = UDim2.new(0, 12, 0, 12)
+        dot.Position = isWL and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
+        dot.BackgroundColor3 = Color3.fromRGB(250, 250, 250)
+        dot.BorderSizePixel = 0
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+        local state = isWL
+        local toggleBtn = Instance.new("TextButton", row)
+        toggleBtn.Size = UDim2.new(1, 0, 1, 0)
+        toggleBtn.BackgroundTransparency = 1
+        toggleBtn.Text = ""
+        toggleBtn.ZIndex = 2
+
+        toggleBtn.MouseButton1Click:Connect(function()
+            state = not state
+            if state then
+                addWhitelist(plr.Name)
+                rowStroke.Color = Theme.ACCENT
+                rowStroke.Transparency = 0.3
+                nameLbl.TextColor3 = Theme.ACCENT
+            else
+                removeWhitelist(plr.Name)
+                rowStroke.Color = Theme.BORDER
+                rowStroke.Transparency = 0.6
+                nameLbl.TextColor3 = Theme.TEXT
+            end
+            TweenService:Create(dot, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Position = state and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6),
+            }):Play()
+            TweenService:Create(ind, TweenInfo.new(0.18), {
+                BackgroundColor3 = state and Theme.ACCENT or Color3.fromRGB(45, 45, 55),
+            }):Play()
+            notify((state and "whitelisted " or "un-whitelisted ") .. plr.Name, state and Theme.ACCENT or Theme.TEXT_DIM)
+        end)
+
+        row.MouseEnter:Connect(function()
+            TweenService:Create(row, TweenInfo.new(0.14), {BackgroundColor3 = Theme.BG_HOVER, BackgroundTransparency = 0}):Play()
+        end)
+        row.MouseLeave:Connect(function()
+            TweenService:Create(row, TweenInfo.new(0.14), {BackgroundColor3 = Theme.BG_OPT, BackgroundTransparency = 0.08}):Play()
+        end)
+
+        whitelistPlayerRows[plr] = row
+    end
+end
+
+local function buildFovDock()
+    for _, c in ipairs(rightScroll:GetChildren()) do
+        if c:IsA("GuiObject") then c:Destroy() end
+    end
+    if rightScroll:FindFirstChildOfClass("UIListLayout") then
+        rightScroll:FindFirstChildOfClass("UIListLayout"):Destroy()
+    end
+
+    local rl = Instance.new("UIListLayout", rightScroll)
+    rl.Padding = UDim.new(0, 6)
+    rl.SortOrder = Enum.SortOrder.LayoutOrder
+
+    makeSection(rightScroll, "FOV CIRCLE")
+
+    makeToggle(rightScroll, "Fov Circle", SilentAimSettings.FOVVisible, function(s)
+        SilentAimSettings.FOVVisible = s
+        fov_circle.Visible = s
+        notify("Fov Circle " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Toggle the FOV circle drawing")
+
+    makeToggle(rightScroll, "Static FOV", SilentAimSettings.FOVStatic, function(s)
+        SilentAimSettings.FOVStatic = s
+        if s then
+            SilentAimSettings.FOVCenter = false
+        end
+        notify("Static FOV " .. (s and "on" or "off"), Theme.ACCENT)
+    end, "Follows cursor position")
+
+    makeToggle(rightScroll, "Center FOV", SilentAimSettings.FOVCenter, function(s)
+        SilentAimSettings.FOVCenter = s
+        if s then
+            SilentAimSettings.FOVStatic = false
+        end
+        notify("Center FOV " .. (s and "on" or "off"), Theme.ACCENT)
+    end, "Locks to screen center")
+
+    makeSlider(rightScroll, "Fov Circle Size", 0, 400, SilentAimSettings.FOVRadius, function(v)
+        SilentAimSettings.FOVRadius = v
+        fov_circle.Radius = v
+        statusLabel.Text = "* idle · method: " .. SilentAimSettings.SilentAimMethod .. " · fov: " .. v
+    end)
+
+    task.defer(function()
+        rightScroll.CanvasSize = UDim2.new(0, 0, 0, rl.AbsoluteContentSize.Y + 8)
+    end)
+end
+
+local currentPage = "main"
+
+local function clearScroll()
+    for _, c in ipairs(scroll:GetChildren()) do
+        if c:IsA("GuiObject") or c:IsA("UIListLayout") or c:IsA("UIPadding") then c:Destroy() end
+    end
+    scrollLayout = Instance.new("UIListLayout", scroll)
+    scrollLayout.Padding = UDim.new(0, 7)
+    scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+end
+
+local function buildMain()
+    makeSection(scroll, "SILENT AIM")
+    makeToggle(scroll, "Enabled", SilentAimSettings.Enabled, function(s)
+        SilentAimSettings.Enabled = s
+        mouse_box.Visible = s and SilentAimSettings.ShowSilentAimTarget
+        notify("Silent Aim " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Master silent aim toggle")
+    makeDropdown(scroll, "Target Part", {"Head", "HumanoidRootPart", "Random"}, SilentAimSettings.TargetPart, function(v)
+        SilentAimSettings.TargetPart = v
+    end)
+    makeDropdown(scroll, "Method", {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"}, SilentAimSettings.SilentAimMethod, function(v)
+        SilentAimSettings.SilentAimMethod = v
+        statusLabel.Text = "* method: " .. v
+    end)
+    makeSlider(scroll, "Hit Chance", 0, 100, SilentAimSettings.HitChance, function(v)
+        SilentAimSettings.HitChance = v
+    end)
+
+    makeSection(scroll, "AUTOSHOOT")
+    makeToggle(scroll, "Autoshoot", SilentAimSettings.AutoshootEnabled, function(s)
+        SilentAimSettings.AutoshootEnabled = s
+        notify("Autoshoot " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Auto fires at current silent aim target")
+
+    makeSection(scroll, "FILTERS")
+    makeToggle(scroll, "Team Check", SilentAimSettings.TeamCheck, function(s)
+        SilentAimSettings.TeamCheck = s
+    end)
+    makeToggle(scroll, "Visible Check", SilentAimSettings.VisibleCheck, function(s)
+        SilentAimSettings.VisibleCheck = s
+    end)
+
+    makeSection(scroll, "TARGET TEAM")
+    makeToggle(scroll, "Target Cop", SilentAimSettings.TargetCop, function(s)
+        SilentAimSettings.TargetCop = s
+        notify("Target Cop: " .. tostring(s), Theme.ACCENT)
+    end, "Aim at Guards team")
+    makeToggle(scroll, "Target Inmate", SilentAimSettings.TargetInmate, function(s)
+        SilentAimSettings.TargetInmate = s
+        notify("Target Inmate: " .. tostring(s), Theme.ACCENT)
+    end, "Aim at Inmates team")
+    makeToggle(scroll, "Target Criminal", SilentAimSettings.TargetCriminal, function(s)
+        SilentAimSettings.TargetCriminal = s
+        notify("Target Criminal: " .. tostring(s), Theme.ACCENT)
+    end, "Aim at Criminals team")
+
+    makeSection(scroll, "PREDICTION")
+    makeToggle(scroll, "Mouse.Hit Prediction", SilentAimSettings.MouseHitPrediction, function(s)
+        SilentAimSettings.MouseHitPrediction = s
+    end)
+    makeSlider(scroll, "Prediction x1000", 165, 1000, math.floor(SilentAimSettings.MouseHitPredictionAmount * 1000), function(v)
+        SilentAimSettings.MouseHitPredictionAmount = v / 1000
+        PredictionAmount = v / 1000
+    end)
+    makeToggle(scroll, "Show Silent Aim Target", SilentAimSettings.ShowSilentAimTarget, function(s)
+        SilentAimSettings.ShowSilentAimTarget = s
+    end)
+
+    makeSection(scroll, "WHITELIST PLAYER")
+
+    local wlDesc = Instance.new("TextLabel", scroll)
+    wlDesc.Size = UDim2.new(1, 0, 0, 20)
+    wlDesc.BackgroundTransparency = 1
+    wlDesc.Text = " Toggle players to exclude from aim"
+    wlDesc.TextColor3 = Theme.TEXT_DIM
+    wlDesc.Font = Enum.Font.Gotham
+    wlDesc.TextSize = 10
+    wlDesc.TextXAlignment = Enum.TextXAlignment.Left
+
+    local refreshBtn = Instance.new("TextButton", scroll)
+    refreshBtn.Size = UDim2.new(1, 0, 0, 28)
+    refreshBtn.BackgroundColor3 = Theme.BG_OPT
+    refreshBtn.BackgroundTransparency = 0.08
+    refreshBtn.Text = "Refresh Player List"
+    refreshBtn.TextColor3 = Theme.TEXT_DIM
+    refreshBtn.Font = Enum.Font.GothamMedium
+    refreshBtn.TextSize = 10
+    refreshBtn.BorderSizePixel = 0
+    refreshBtn.AutoButtonColor = false
+    Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0.22, 0)
+
+    local wlListContainer = Instance.new("Frame", scroll)
+    wlListContainer.Size = UDim2.new(1, 0, 0, 10)
+    wlListContainer.BackgroundTransparency = 1
+    wlListContainer.AutomaticSize = Enum.AutomaticSize.Y
+    local wlListLayout = Instance.new("UIListLayout", wlListContainer)
+    wlListLayout.Padding = UDim.new(0, 4)
+    wlListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    rebuildWhitelistPlayerList(wlListContainer)
+
+    refreshBtn.MouseButton1Click:Connect(function()
+        rebuildWhitelistPlayerList(wlListContainer)
+        notify("Player list refreshed", Theme.ACCENT)
+    end)
+    refreshBtn.MouseEnter:Connect(function()
+        TweenService:Create(refreshBtn, TweenInfo.new(0.14), {BackgroundColor3 = Theme.BG_HOVER, BackgroundTransparency = 0, TextColor3 = Theme.TEXT}):Play()
+    end)
+    refreshBtn.MouseLeave:Connect(function()
+        TweenService:Create(refreshBtn, TweenInfo.new(0.14), {BackgroundColor3 = Theme.BG_OPT, BackgroundTransparency = 0.08, TextColor3 = Theme.TEXT_DIM}):Play()
+    end)
+
+    Players.PlayerAdded:Connect(function()
+        task.wait(0.5)
+        if currentPage == "main" then
+            rebuildWhitelistPlayerList(wlListContainer)
+        end
+    end)
+    Players.PlayerRemoving:Connect(function()
+        task.wait(0.1)
+        if currentPage == "main" then
+            rebuildWhitelistPlayerList(wlListContainer)
+        end
+    end)
+end
+
+local function buildESP()
+    makeSection(scroll, "ESP")
+    makeToggle(scroll, "Enable ESP", SilentAimSettings.ESP_Enabled, function(s)
+        SilentAimSettings.ESP_Enabled = s
+        notify("ESP " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Master ESP toggle")
+    makeToggle(scroll, "Team Colors", SilentAimSettings.ESP_Team, function(s)
+        SilentAimSettings.ESP_Team = s
+        notify("Team colors " .. (s and "on" or "off"), Theme.ACCENT)
+    end, "Highlight and trace use team colors")
+
+    makeSection(scroll, "ESP ELEMENTS")
+    makeToggle(scroll, "Highlight", SilentAimSettings.ESP_Highlight, function(s)
+        SilentAimSettings.ESP_Highlight = s
+    end)
+    makeToggle(scroll, "Name", SilentAimSettings.ESP_Name, function(s)
+        SilentAimSettings.ESP_Name = s
+    end)
+    makeToggle(scroll, "Health Bar", SilentAimSettings.ESP_Health, function(s)
+        SilentAimSettings.ESP_Health = s
+    end)
+    makeToggle(scroll, "Trace Line", SilentAimSettings.ESP_Trace, function(s)
+        SilentAimSettings.ESP_Trace = s
+    end)
+
+    makeSection(scroll, "ESP RANGE")
+    makeSlider(scroll, "Max Distance", 100, 3000, SilentAimSettings.ESP_MaxDistance, function(v)
+        SilentAimSettings.ESP_MaxDistance = v
+    end)
+end
+
+local function updateThemeColors()
+    mainGlow.Color = Theme.ACCENT
+    hubGlow.Color = Theme.ACCENT
+    mouse_box.Color = Theme.ACCENT
+    fov_circle.Color = Theme.ACCENT
+    contentHeader.TextColor3 = Theme.ACCENT
+    rightHeader.TextColor3 = Theme.ACCENT
+    icon.TextColor3 = Theme.ACCENT
+    accentLine.BackgroundColor3 = Theme.ACCENT
+    accentGlow.Color = Theme.ACCENT
+end
+
+local MainFileName = "UniversalSilentAim"
+local SelectedFile, FileToSave = "", ""
+
+do
+    if not isfolder(MainFileName) then makefolder(MainFileName) end
+    local sub = MainFileName .. "/" .. tostring(game.PlaceId)
+    if not isfolder(sub) then makefolder(sub) end
+end
+
+local Files = listfiles(MainFileName .. "/" .. tostring(game.PlaceId))
+
+local function GetFiles()
+    local out = {}
+    for i = 1, #Files do
+        local file = Files[i]
+        if file:sub(-4) == ".lua" then
+            local pos = file:find(".lua", 1, true)
+            local start = pos
+            local ch = file:sub(pos, pos)
+            while ch ~= "/" and ch ~= "\\" and ch ~= "" do
+                pos = pos - 1
+                ch = file:sub(pos, pos)
+            end
+            if ch == "/" or ch == "\\" then
+                table.insert(out, file:sub(pos + 1, start - 1))
+            end
+        end
+    end
+    return out
+end
+
+local function UpdateFile(FileName)
+    writefile(MainFileName .. "/" .. tostring(game.PlaceId) .. "/" .. FileName .. ".lua", HttpService:JSONEncode(SilentAimSettings))
+end
+
+local function LoadFile(FileName)
+    local data = HttpService:JSONDecode(readfile(MainFileName .. "/" .. tostring(game.PlaceId) .. "/" .. FileName .. ".lua"))
+    for k, v in next, data do SilentAimSettings[k] = v end
+end
+
 local function makeInput(parent, placeholder, callback)
     local box = Instance.new("TextBox", parent)
     box.Size = UDim2.new(1, 0, 0, 32)
@@ -1434,241 +1914,6 @@ local function makeInput(parent, placeholder, callback)
         TweenService:Create(stroke, TweenInfo.new(0.15), {Transparency = 0.6, Color = Theme.BORDER}):Play()
         callback(box.Text)
     end)
-end
-
--- whitelist renderer
-local whitelistListContainer
-local function renderWhitelist()
-    if not whitelistListContainer then return end
-    for _, c in ipairs(whitelistListContainer:GetChildren()) do
-        if c:IsA("TextLabel") or c:IsA("Frame") then c:Destroy() end
-    end
-    local count = 0
-    for name in pairs(Whitelist) do
-        count += 1
-        local row = Instance.new("Frame", whitelistListContainer)
-        row.Size = UDim2.new(1, 0, 0, 26)
-        row.BackgroundColor3 = Theme.BG_MAIN
-        row.BackgroundTransparency = 0.3
-        row.BorderSizePixel = 0
-        Instance.new("UICorner", row).CornerRadius = UDim.new(0.3, 0)
-
-        local lbl = Instance.new("TextLabel", row)
-        lbl.Size = UDim2.new(1, -40, 1, 0)
-        lbl.Position = UDim2.new(0, 10, 0, 0)
-        lbl.BackgroundTransparency = 1
-        lbl.Text = name
-        lbl.TextColor3 = Theme.TEXT
-        lbl.Font = Enum.Font.Gotham
-        lbl.TextSize = 11
-        lbl.TextXAlignment = Enum.TextXAlignment.Left
-
-        local del = Instance.new("TextButton", row)
-        del.Size = UDim2.new(0, 22, 0, 22)
-        del.Position = UDim2.new(1, -28, 0.5, -11)
-        del.BackgroundColor3 = Theme.BG_OPT
-        del.Text = "x"
-        del.TextColor3 = Theme.TEXT_DIM
-        del.Font = Enum.Font.GothamBold
-        del.TextSize = 12
-        del.BorderSizePixel = 0
-        del.AutoButtonColor = false
-        Instance.new("UICorner", del).CornerRadius = UDim.new(0.3, 0)
-        del.MouseButton1Click:Connect(function()
-            removeWhitelist(name)
-            renderWhitelist()
-            notify("removed " .. name, Theme.TEXT_DIM)
-        end)
-        del.MouseEnter:Connect(function()
-            TweenService:Create(del, TweenInfo.new(0.12), {BackgroundColor3 = Theme.BG_HOVER, TextColor3 = Color3.fromRGB(255, 120, 120)}):Play()
-        end)
-        del.MouseLeave:Connect(function()
-            TweenService:Create(del, TweenInfo.new(0.12), {BackgroundColor3 = Theme.BG_OPT, TextColor3 = Theme.TEXT_DIM}):Play()
-        end)
-    end
-    if count == 0 then
-        local e = Instance.new("TextLabel", whitelistListContainer)
-        e.Size = UDim2.new(1, 0, 0, 22)
-        e.BackgroundTransparency = 1
-        e.Text = "  empty"
-        e.TextColor3 = Theme.TEXT_DIM
-        e.Font = Enum.Font.Gotham
-        e.TextSize = 10
-        e.TextXAlignment = Enum.TextXAlignment.Left
-    end
-end
-
--- FOV circle dock builder (permanent right panel)
-local function buildFovDock()
-    for _, c in ipairs(rightScroll:GetChildren()) do
-        if c:IsA("GuiObject") or c:IsA("UIListLayout") then c:Destroy() end
-    end
-    local rl = Instance.new("UIListLayout", rightScroll)
-    rl.Padding = UDim.new(0, 6)
-    rl.SortOrder = Enum.SortOrder.LayoutOrder
-
-    makeToggle(rightScroll, "Enable", SilentAimSettings.FOVVisible, function(s)
-        SilentAimSettings.FOVVisible = s
-        fov_circle.Visible = s
-    end, "Master fov circle toggle")
-    makeToggle(rightScroll, "Static", SilentAimSettings.FOVStatic, function(s)
-        SilentAimSettings.FOVStatic = s
-        if s then SilentAimSettings.FOVCenter = false end
-        notify("Static FOV " .. (s and "on" or "off"), Theme.ACCENT)
-    end, "Follows your cursor")
-    makeToggle(rightScroll, "Center", SilentAimSettings.FOVCenter, function(s)
-        SilentAimSettings.FOVCenter = s
-        if s then SilentAimSettings.FOVStatic = false end
-        notify("Center FOV " .. (s and "on" or "off"), Theme.ACCENT)
-    end, "Locks to screen center")
-    makeSlider(rightScroll, "Radius", 0, 400, SilentAimSettings.FOVRadius, function(v)
-        SilentAimSettings.FOVRadius = v
-        fov_circle.Radius = v
-    end)
-    task.defer(function()
-        rightScroll.CanvasSize = UDim2.new(0, 0, 0, rl.AbsoluteContentSize.Y + 8)
-    end)
-end
-
-local currentPage = "main"
-
-local function clearScroll()
-    for _, c in ipairs(scroll:GetChildren()) do
-        if c:IsA("GuiObject") or c:IsA("UIListLayout") or c:IsA("UIPadding") then c:Destroy() end
-    end
-    scrollLayout = Instance.new("UIListLayout", scroll)
-    scrollLayout.Padding = UDim.new(0, 7)
-    scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
-end
-
-local function buildMain()
-    makeSection(scroll, "SILENT AIM")
-    makeToggle(scroll, "Enabled", SilentAimSettings.Enabled, function(s)
-        SilentAimSettings.Enabled = s
-        mouse_box.Visible = s
-        notify("Silent Aim " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
-    end, "Master silent aim toggle")
-    makeDropdown(scroll, "Target Part", {"Head", "HumanoidRootPart", "Random"}, SilentAimSettings.TargetPart, function(v) SilentAimSettings.TargetPart = v end)
-    makeDropdown(scroll, "Method", {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"}, SilentAimSettings.SilentAimMethod, function(v)
-        SilentAimSettings.SilentAimMethod = v
-        statusLabel.Text = "* method: " .. v
-    end)
-    makeSlider(scroll, "Hit Chance", 0, 100, SilentAimSettings.HitChance, function(v) SilentAimSettings.HitChance = v end)
-
-    makeSection(scroll, "FILTERS")
-    makeToggle(scroll, "Team Check", SilentAimSettings.TeamCheck, function(s) SilentAimSettings.TeamCheck = s end)
-    makeToggle(scroll, "Visible Check", SilentAimSettings.VisibleCheck, function(s) SilentAimSettings.VisibleCheck = s end)
-
-    makeSection(scroll, "TARGET TEAM")
-    makeToggle(scroll, "Target Cop", SilentAimSettings.TargetCop, function(s)
-        SilentAimSettings.TargetCop = s
-        notify("Target Cop: " .. tostring(s), Theme.ACCENT)
-    end, "Aim only at Guards team")
-    makeToggle(scroll, "Target Inmate", SilentAimSettings.TargetInmate, function(s)
-        SilentAimSettings.TargetInmate = s
-        notify("Target Inmate: " .. tostring(s), Theme.ACCENT)
-    end, "Aim only at Inmates team")
-    makeToggle(scroll, "Target Criminal", SilentAimSettings.TargetCriminal, function(s)
-        SilentAimSettings.TargetCriminal = s
-        notify("Target Criminal: " .. tostring(s), Theme.ACCENT)
-    end, "Aim only at Criminals team")
-
-    makeSection(scroll, "PREDICTION")
-    makeToggle(scroll, "Mouse.Hit Prediction", SilentAimSettings.MouseHitPrediction, function(s) SilentAimSettings.MouseHitPrediction = s end)
-    makeSlider(scroll, "Prediction x1000", 165, 1000, math.floor(SilentAimSettings.MouseHitPredictionAmount * 1000), function(v)
-        SilentAimSettings.MouseHitPredictionAmount = v / 1000
-        PredictionAmount = v / 1000
-    end)
-    makeToggle(scroll, "Show Silent Aim Target", SilentAimSettings.ShowSilentAimTarget, function(s) SilentAimSettings.ShowSilentAimTarget = s end)
-
-    makeSection(scroll, "WHITELIST")
-    local inputHolder = Instance.new("Frame", scroll)
-    inputHolder.Size = UDim2.new(1, 0, 0, 32)
-    inputHolder.BackgroundColor3 = Theme.BG_OPT
-    inputHolder.BackgroundTransparency = 0.08
-    inputHolder.BorderSizePixel = 0
-    Instance.new("UICorner", inputHolder).CornerRadius = UDim.new(0.22, 0)
-
-    local wlInput = Instance.new("TextBox", inputHolder)
-    wlInput.Size = UDim2.new(1, -80, 1, 0)
-    wlInput.Position = UDim2.new(0, 10, 0, 0)
-    wlInput.BackgroundTransparency = 1
-    wlInput.PlaceholderText = "player name..."
-    wlInput.Text = ""
-    wlInput.TextColor3 = Theme.TEXT
-    wlInput.PlaceholderColor3 = Theme.TEXT_DIM
-    wlInput.Font = Enum.Font.Gotham
-    wlInput.TextSize = 11
-    wlInput.TextXAlignment = Enum.TextXAlignment.Left
-
-    local addBtn = Instance.new("TextButton", inputHolder)
-    addBtn.Size = UDim2.new(0, 62, 0, 24)
-    addBtn.Position = UDim2.new(1, -70, 0.5, -12)
-    addBtn.BackgroundColor3 = Theme.ACCENT
-    addBtn.Text = "add"
-    addBtn.TextColor3 = Theme.BG_MAIN
-    addBtn.Font = Enum.Font.GothamBold
-    addBtn.TextSize = 11
-    addBtn.BorderSizePixel = 0
-    addBtn.AutoButtonColor = false
-    Instance.new("UICorner", addBtn).CornerRadius = UDim.new(0.3, 0)
-
-    addBtn.MouseButton1Click:Connect(function()
-        local name = wlInput.Text
-        if name and name ~= "" then
-            addWhitelist(name)
-            wlInput.Text = ""
-            renderWhitelist()
-            notify("whitelisted " .. name, Theme.ACCENT)
-        end
-    end)
-
-    whitelistListContainer = Instance.new("Frame", scroll)
-    whitelistListContainer.Size = UDim2.new(1, 0, 0, 10)
-    whitelistListContainer.BackgroundTransparency = 1
-    whitelistListContainer.AutomaticSize = Enum.AutomaticSize.Y
-    local wlLayout = Instance.new("UIListLayout", whitelistListContainer)
-    wlLayout.Padding = UDim.new(0, 3)
-    wlLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-    renderWhitelist()
-end
-
-local function buildESP()
-    makeSection(scroll, "ESP")
-    makeToggle(scroll, "Enable ESP", SilentAimSettings.ESP_Enabled, function(s)
-        SilentAimSettings.ESP_Enabled = s
-        notify("ESP " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
-    end, "Master ESP toggle")
-    makeToggle(scroll, "Team Colors", SilentAimSettings.ESP_Team, function(s)
-        SilentAimSettings.ESP_Team = s
-        notify("Team colors " .. (s and "on" or "off"), Theme.ACCENT)
-    end, "Highlight and trace use team colors")
-
-    makeSection(scroll, "ESP ELEMENTS")
-    makeToggle(scroll, "Highlight", SilentAimSettings.ESP_Highlight, function(s) SilentAimSettings.ESP_Highlight = s end)
-    makeToggle(scroll, "Name", SilentAimSettings.ESP_Name, function(s) SilentAimSettings.ESP_Name = s end)
-    makeToggle(scroll, "Health Bar", SilentAimSettings.ESP_Health, function(s) SilentAimSettings.ESP_Health = s end)
-    makeToggle(scroll, "Trace Line", SilentAimSettings.ESP_Trace, function(s) SilentAimSettings.ESP_Trace = s end)
-
-    makeSection(scroll, "ESP RANGE")
-    makeSlider(scroll, "Max Distance", 100, 3000, SilentAimSettings.ESP_MaxDistance, function(v) SilentAimSettings.ESP_MaxDistance = v end)
-end
-
-function updateThemeColors()
-    mainGlow.Color = Theme.ACCENT
-    hubGlow.Color = Theme.ACCENT
-    mouse_box.Color = Theme.ACCENT
-    fov_circle.Color = Theme.ACCENT
-    contentHeader.TextColor3 = Theme.ACCENT
-    rightHeader.TextColor3 = Theme.ACCENT
-    icon.TextColor3 = Theme.ACCENT
-    accentLine.BackgroundColor3 = Theme.ACCENT
-    accentGradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Theme.GRADIENT_1),
-        ColorSequenceKeypoint.new(0.5, Theme.ACCENT_LIGHT),
-        ColorSequenceKeypoint.new(1, Theme.GRADIENT_2),
-    })
 end
 
 local function buildConfig()
@@ -1698,8 +1943,14 @@ local function buildConfig()
         empty.TextXAlignment = Enum.TextXAlignment.Left
     else
         for _, name in ipairs(files) do
-            makeButton(scroll, "Load: " .. name, function() LoadFile(name); notify("Loaded: " .. name, Theme.ACCENT) end)
-            makeButton(scroll, "Save: " .. name, function() UpdateFile(name); notify("Saved: " .. name, Theme.ACCENT) end)
+            makeButton(scroll, "Load: " .. name, function()
+                LoadFile(name)
+                notify("Loaded: " .. name, Theme.ACCENT)
+            end)
+            makeButton(scroll, "Save: " .. name, function()
+                UpdateFile(name)
+                notify("Saved: " .. name, Theme.ACCENT)
+            end)
         end
     end
 
@@ -1737,7 +1988,7 @@ end
 local function buildInfo()
     makeSection(scroll, "INFO")
     local info = Instance.new("TextLabel", scroll)
-    info.Size = UDim2.new(1, 0, 0, 360)
+    info.Size = UDim2.new(1, 0, 0, 380)
     info.BackgroundColor3 = Theme.BG_OPT
     info.BackgroundTransparency = 0.08
     info.TextColor3 = Theme.TEXT
@@ -1747,21 +1998,30 @@ local function buildInfo()
     info.TextXAlignment = Enum.TextXAlignment.Left
     info.TextYAlignment = Enum.TextYAlignment.Top
     info.Text = [[
- SPENT HUB v18
+ SPENT HUB v19
 
- FOV Circle:
-  Right dock (always visible)
-  Enable / Static / Center / Radius
+ FOV Circle (always on right dock):
+  Fov Circle - toggle the drawing
+  Static FOV - follows cursor (Averiias method)
+  Center FOV - locks to screen center
+  Fov Circle Size - adjusts radius
 
- Whitelist:
-  Main > WHITELIST
-  add or x-remove names
-  whitelisted players skipped
-  by silent aim and ESP
+ Whitelist Player (in Main tab):
+  Shows all players in the server
+  Toggle each player individually
+  Whitelisted = skipped by aim + ESP
+  Refresh button to update list
+
+ Autoshoot (in Main tab):
+  Works with silent aim target
+  Auto fires equipped gun at target
+  Respects per-weapon fire rate
+  Requires gun equipped from list:
+  AK-47, M9, M4A1, MP5, FAL,
+  Revolver, M700, Remington 870
 
  Keybinds:
   RAlt  - toggle silent aim
-  RMB   - engage aim
   RShift - show/hide hub
   END   - unload
 ]]
@@ -1872,7 +2132,6 @@ for _, t in ipairs(tabs) do
     table.insert(tabUnderlines, {frame = underline, page = t.page})
 end
 
--- build FOV dock once
 buildFovDock()
 
 local openState = "idle"
@@ -2040,11 +2299,9 @@ end)
 
 task.spawn(function()
     RenderStepped:Connect(function()
-        local lockedTarget = getClosestPlayer()
-
         if SilentAimSettings.ShowSilentAimTarget and SilentAimSettings.Enabled then
-            if lockedTarget then
-                local Root = lockedTarget.Parent and lockedTarget.Parent.PrimaryPart or lockedTarget
+            if currentTarget and currentTarget.Parent then
+                local Root = currentTarget.Parent and currentTarget.Parent.PrimaryPart or currentTarget
                 local vp, on = WorldToViewportPoint(Camera, Root.Position)
                 mouse_box.Visible = on
                 mouse_box.Position = Vector2.new(vp.X, vp.Y)
@@ -2052,6 +2309,8 @@ task.spawn(function()
                 mouse_box.Visible = false
                 mouse_box.Position = Vector2.new()
             end
+        else
+            mouse_box.Visible = false
         end
 
         if SilentAimSettings.FOVVisible then
@@ -2059,10 +2318,12 @@ task.spawn(function()
             fov_circle.Radius = SilentAimSettings.FOVRadius
             if SilentAimSettings.FOVCenter then
                 fov_circle.Position = getCenter()
+            elseif SilentAimSettings.FOVStatic then
+                fov_circle.Position = getCursorPos()
             else
                 fov_circle.Position = getCursorPos()
             end
-            fov_circle.Color = lockedTarget and TARGET_LOCK_COLOR or RING_IDLE_COLOR
+            fov_circle.Color = (currentTarget and currentTarget.Parent) and TARGET_LOCK_COLOR or RING_IDLE_COLOR
         else
             fov_circle.Visible = false
         end
@@ -2077,12 +2338,12 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Args = {...}
     local self = Args[1]
     local chance = CalculateChance(SilentAimSettings.HitChance)
-    if SilentAimSettings.Enabled and self == workspace and not checkcaller() and chance == true then
+    if SilentAimSettings.Enabled and self == workspace and not checkcaller() and chance == true and not AutoShootRaycastInProgress then
         if Method == "FindPartOnRayWithIgnoreList" and SilentAimSettings.SilentAimMethod == Method then
             if ValidateArguments(Args, ExpectedArguments.FindPartOnRayWithIgnoreList) then
                 local r = Args[2]
-                local hit = getClosestPlayer()
-                if hit then
+                local hit = currentTarget
+                if hit and hit.Parent then
                     Args[2] = Ray.new(r.Origin, getDirection(r.Origin, hit.Position))
                     return oldNamecall(unpack(Args))
                 end
@@ -2090,8 +2351,8 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
         elseif Method == "FindPartOnRayWithWhitelist" and SilentAimSettings.SilentAimMethod == Method then
             if ValidateArguments(Args, ExpectedArguments.FindPartOnRayWithWhitelist) then
                 local r = Args[2]
-                local hit = getClosestPlayer()
-                if hit then
+                local hit = currentTarget
+                if hit and hit.Parent then
                     Args[2] = Ray.new(r.Origin, getDirection(r.Origin, hit.Position))
                     return oldNamecall(unpack(Args))
                 end
@@ -2099,8 +2360,8 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
         elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and SilentAimSettings.SilentAimMethod:lower() == Method:lower() then
             if ValidateArguments(Args, ExpectedArguments.FindPartOnRay) then
                 local r = Args[2]
-                local hit = getClosestPlayer()
-                if hit then
+                local hit = currentTarget
+                if hit and hit.Parent then
                     Args[2] = Ray.new(r.Origin, getDirection(r.Origin, hit.Position))
                     return oldNamecall(unpack(Args))
                 end
@@ -2108,8 +2369,8 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
         elseif Method == "Raycast" and SilentAimSettings.SilentAimMethod == Method then
             if ValidateArguments(Args, ExpectedArguments.Raycast) then
                 local o = Args[2]
-                local hit = getClosestPlayer()
-                if hit then
+                local hit = currentTarget
+                if hit and hit.Parent then
                     Args[3] = getDirection(o, hit.Position)
                     return oldNamecall(unpack(Args))
                 end
@@ -2121,8 +2382,8 @@ end))
 
 local oldIndex = nil
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, i)
-    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" and getClosestPlayer() then
-        local hit = getClosestPlayer()
+    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" and currentTarget and currentTarget.Parent then
+        local hit = currentTarget
         if i == "Target" or i == "target" then
             return hit
         elseif i == "Hit" or i == "hit" then
@@ -2146,8 +2407,8 @@ main.Visible = true
 shadow.Visible = true
 bgBlur.Visible = true
 openState = "open"
-notify("SPENT HUB v18 loaded", Theme.ACCENT)
+notify("SPENT HUB v19 loaded", Theme.ACCENT)
 task.delay(0.4, function()
-    notify("fov dock always on the right", Theme.TEXT_DIM)
+    notify("RAlt = toggle aim · RShift = toggle gui", Theme.TEXT_DIM)
 end)
-print("SPENT HUB loaded.")
+print("SPENT HUB v19 loaded.")
