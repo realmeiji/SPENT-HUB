@@ -534,38 +534,119 @@ local function stopNoclip()
     end
 end
 
--- NOCLIP PUNCH
+-- ==================== NOCLIP PUNCH (FIXED) ====================
 local punchBusy = false
+local punchConnection = nil
+
+local function noclipAll()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end
+end
+
 local function doNoclipPunch()
     if punchBusy then return end
     punchBusy = true
-    task.spawn(function()
-        local char = LocalPlayer.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        if not char or not root then punchBusy = false return end
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances = { char }
-        params.IgnoreWater = true
-        local dirs = {Vector3.new(1,0,0), Vector3.new(-1,0,0), Vector3.new(0,1,0), Vector3.new(0,-1,0), Vector3.new(0,0,1), Vector3.new(0,0,-1)}
-        local near = false
-        for _, d in ipairs(dirs) do
-            if workspace:Raycast(root.Position, d.Unit * 3, params) then near = true break end
-        end
-        if not near then punchBusy = false return end
-        task.wait(0.3)
-        local stillNear = false
-        for _, d in ipairs(dirs) do
-            if workspace:Raycast(root.Position, d.Unit * 3, params) then stillNear = true break end
-        end
-        if not stillNear then punchBusy = false return end
-        noclipStep()
-        local conn = RunService.Stepped:Connect(function() noclipStep() end)
-        task.wait(0.2)
-        conn:Disconnect()
+
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not char or not root or not hum then
         punchBusy = false
+        return
+    end
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { char }
+    params.IgnoreWater = true
+    params.RespectCanCollide = false
+
+    local dirs = {
+        Vector3.new(1,0,0), Vector3.new(-1,0,0),
+        Vector3.new(0,1,0), Vector3.new(0,-1,0),
+        Vector3.new(0,0,1), Vector3.new(0,0,-1),
+    }
+
+    local near = false
+    for _, d in ipairs(dirs) do
+        local result = workspace:Raycast(root.Position, d * 4, params)
+        if result and result.Instance then
+            near = true
+            break
+        end
+    end
+
+    if not near then
+        notify("No wall nearby", Theme.TEXT_DIM)
+        punchBusy = false
+        return
+    end
+
+    task.wait(0.3)
+
+    local stillNear = false
+    for _, d in ipairs(dirs) do
+        local result = workspace:Raycast(root.Position, d * 5, params)
+        if result and result.Instance then
+            stillNear = true
+            break
+        end
+    end
+
+    if not stillNear then
+        punchBusy = false
+        return
+    end
+
+    noclipAll()
+
+    local oldAutoRotate = hum.AutoRotate
+    local oldPlatformStand = hum.PlatformStand
+    hum.PlatformStand = true
+    hum.AutoRotate = false
+
+    local startTime = tick()
+    local PUNCH_WINDOW = 0.25
+    if punchConnection then punchConnection:Disconnect() end
+    punchConnection = RunService.PreSimulation:Connect(function()
+        if tick() - startTime > PUNCH_WINDOW then
+            if punchConnection then
+                punchConnection:Disconnect()
+                punchConnection = nil
+            end
+            return
+        end
+        noclipAll()
     end)
+
+    task.wait(PUNCH_WINDOW + 0.05)
+
+    if punchConnection then
+        punchConnection:Disconnect()
+        punchConnection = nil
+    end
+    if char and char.Parent then
+        hum.PlatformStand = oldPlatformStand
+        hum.AutoRotate = oldAutoRotate
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                if not SilentAimSettings.NoclipEnabled then
+                    part.CanCollide = true
+                end
+            end
+        end
+        local rp = char:FindFirstChild("HumanoidRootPart")
+        if rp then rp.CanCollide = false end
+    end
+
+    punchBusy = false
 end
+-- ================================================================
 
 local function applySpeed(v)
     local char = LocalPlayer.Character
@@ -825,7 +906,6 @@ local function updateESP()
             continue
         end
 
-        -- distance cull BEFORE viewport math (cheap)
         local dist = (camPos - hrp.Position).Magnitude
         if dist > maxD then
             if d then hideESP(d) end
@@ -1829,7 +1909,7 @@ local function buildMain()
     makeSection(scroll, "NOCLIP PUNCH")
     makeToggle(scroll, "Noclip Punch", SilentAimSettings.NoclipPunchEnabled, function(s)
         SilentAimSettings.NoclipPunchEnabled = s
-    end, "Press F near a wall. 0.3s arm, 0.2s window.")
+    end, "Press F near a wall. 0.3s arm, 0.25s window.")
 
     makeSection(scroll, "FILTERS")
     makeToggle(scroll, "Team Check", SilentAimSettings.TeamCheck, function(s) SilentAimSettings.TeamCheck = s end)
@@ -2085,7 +2165,7 @@ local function buildInfo()
 
  Noclip Punch (Main):
   Toggle on, press F near a wall.
-  0.3s arm, 0.2s noclip window.
+  0.3s arm, 0.25s noclip window.
 
  Autoshoot (Main):
   Independent toggle. Fires equipped
