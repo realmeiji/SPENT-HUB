@@ -8,6 +8,7 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
+-- startup
 local startupGui = Instance.new("ScreenGui")
 startupGui.Name = "SpentHubStartup"
 startupGui.ResetOnSpawn = false
@@ -81,6 +82,7 @@ TweenService:Create(startupStroke, TweenInfo.new(0.35), {Transparency = 1}):Play
 task.wait(0.4)
 pcall(function() startupGui:Destroy() end)
 
+-- settings
 local SilentAimSettings = {
     Enabled = false,
     TeamCheck = false,
@@ -89,7 +91,6 @@ local SilentAimSettings = {
     SilentAimMethod = "Raycast",
     FOVRadius = 130,
     FOVVisible = false,
-    FOVStatic = true,
     FOVCenter = false,
     ShowSilentAimTarget = false,
     MouseHitPrediction = false,
@@ -110,6 +111,13 @@ local SilentAimSettings = {
     ESP_HPColor = Color3.fromRGB(80, 255, 100),
     ESP_TraceColor = Color3.fromRGB(255, 255, 255),
     AutoshootEnabled = false,
+    -- Visuals tab
+    NoclipEnabled = false,
+    SpeedValue = 16,
+    JumpPowerValue = 50,
+    InvisibleEnabled = false,
+    KorbloxEnabled = false,
+    HeadlessEnabled = false,
 }
 getgenv().SilentAimSettings = SilentAimSettings
 
@@ -276,7 +284,6 @@ local function matchesTeam(Player)
 end
 
 local currentTarget = nil
-
 local function getClosestPlayer()
     if not SilentAimSettings.TargetPart then return end
     local Closest, DistanceToMouse
@@ -320,16 +327,15 @@ task.spawn(function()
     end
 end)
 
+-- autoshoot
 local shootRemote = nil
 local AutoShootGunTracers = nil
-
 pcall(function()
     local gunRemotes = ReplicatedStorage:WaitForChild("GunRemotes", 5)
     if gunRemotes then
         shootRemote = gunRemotes:WaitForChild("ShootEvent", 5)
     end
 end)
-
 pcall(function()
     local sharedModules = ReplicatedStorage:WaitForChild("SharedModules", 5)
     local tracersModule = sharedModules and sharedModules:WaitForChild("GunTracers", 5)
@@ -356,9 +362,7 @@ local AutoShootRaycastInProgress = false
 local gunModNames = {"AK-47", "Remington 870", "M9", "M700", "M4A1", "FAL", "MP5", "Revolver"}
 
 local function getSmoothedTargetPosition()
-    if currentTarget and currentTarget.Parent then
-        return currentTarget.Position
-    end
+    if currentTarget and currentTarget.Parent then return currentTarget.Position end
     return nil
 end
 
@@ -431,9 +435,7 @@ local function performAutoShot(weapon)
     autoShootParams.FilterDescendantsInstances = { char }
     local aimPoint = currentTarget.Position
     local redirected = getRedirectedDirectionForAutoShoot(origin)
-    if redirected then
-        aimPoint = origin + redirected
-    end
+    if redirected then aimPoint = origin + redirected end
     local projectileCount = weapon:GetAttribute("ProjectileCount") or 1
     local spreadRadius = weapon:GetAttribute("SpreadRadius") or 0
     local muzzle = weapon:FindFirstChild("Muzzle")
@@ -491,23 +493,21 @@ RunService.Heartbeat:Connect(function()
     if not table.find(gunModNames, weapon.Name) then return end
     local fireRate = weapon:GetAttribute("FireRate") or 0.1
     local weaponAutoFireAttr = weapon:GetAttribute("AutoFire")
-    if not weaponAutoFireAttr then
-        fireRate = fireRate * 1.5
-    end
-    if weapon.Name == "Remington 870" then
-        fireRate = 0.45
-    end
+    if not weaponAutoFireAttr then fireRate = fireRate * 1.5 end
+    if weapon.Name == "Remington 870" then fireRate = 0.45 end
     local lastShotTime = lastAutoShotByWeapon[weapon.Name] or 0
     if (tick() - lastShotTime) < fireRate then return end
     lastAutoShotByWeapon[weapon.Name] = tick()
     performAutoShot(weapon)
 end)
 
+-- ESP
 local espCache = {}
 local ESP_UPDATE_INTERVAL = 1 / 30
 local HIGHLIGHT_CHECK_INTERVAL = 0.1
 local LOCK_CACHE_INTERVAL = 0.1
 local DISTANCE_CULL = 1.2
+
 local lastESPUpdate, lastHighlightUpdate, lastLockCheck = 0, 0, 0
 local cachedLockedChar = nil
 
@@ -676,6 +676,205 @@ local function updateESP()
     end
 end
 
+-- ============ VISUALS FEATURES ============
+-- Noclip: toggles Stepped connection
+local noclipConnection = nil
+local function noclipStep()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.CanCollide then
+            part.CanCollide = false
+        end
+    end
+end
+local function startNoclip()
+    if noclipConnection then return end
+    noclipConnection = RunService.Stepped:Connect(noclipStep)
+end
+local function stopNoclip()
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+end
+
+-- Speed: applies WalkSpeed to Humanoid
+local function applySpeed(v)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed = v end
+end
+
+-- JumpPower
+local function applyJumpPower(v)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.UseJumpPower = true
+        hum.JumpPower = v
+    end
+end
+
+-- Invisible (Precision Hub approach)
+local InvisibleRealCFrame = nil
+local InvisibleAnimationTrack = nil
+local InvisibleRenderKey = "SpentHubInvisibleRender"
+local InvisibleOriginalTransparency = {}
+local InvisibleOriginalCanCollide = {}
+
+local function loadInvisibleAnimation(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then return nil end
+    local isR15 = humanoid.RigType == Enum.HumanoidRigType.R15
+    local animation = Instance.new("Animation")
+    animation.AnimationId = isR15 and "rbxassetid://18665825805" or "rbxassetid://215384594"
+    local track = animator:LoadAnimation(animation)
+    track.Priority = Enum.AnimationPriority.Action4
+    track:Play(0, 0.001, 0)
+    animation:Destroy()
+    task.delay(0, function()
+        track.TimePosition = isR15 and 1.95 or 0.4
+    end)
+    return track
+end
+
+local function stopInvisible()
+    pcall(function() RunService:UnbindFromRenderStep(InvisibleRenderKey) end)
+    if InvisibleAnimationTrack then
+        InvisibleAnimationTrack:Stop()
+        InvisibleAnimationTrack:Destroy()
+        InvisibleAnimationTrack = nil
+    end
+    local character = LocalPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if rootPart and InvisibleRealCFrame then
+        rootPart.CFrame = InvisibleRealCFrame
+        local currentVelocity = rootPart.AssemblyLinearVelocity
+        rootPart.AssemblyLinearVelocity = Vector3.new(currentVelocity.X, 0, currentVelocity.Z)
+    end
+    InvisibleRealCFrame = nil
+    if character then
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") and part ~= rootPart then
+                if InvisibleOriginalTransparency[part] ~= nil then
+                    part.Transparency = InvisibleOriginalTransparency[part]
+                end
+                if InvisibleOriginalCanCollide[part] ~= nil then
+                    part.CanCollide = InvisibleOriginalCanCollide[part]
+                end
+            end
+        end
+        if rootPart then rootPart.Transparency = 0 end
+    end
+    table.clear(InvisibleOriginalTransparency)
+    table.clear(InvisibleOriginalCanCollide)
+end
+
+local function startInvisible()
+    local character = LocalPlayer.Character
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart then return end
+    InvisibleAnimationTrack = loadInvisibleAnimation(character)
+    InvisibleRealCFrame = nil
+    table.clear(InvisibleOriginalTransparency)
+    table.clear(InvisibleOriginalCanCollide)
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part ~= rootPart then
+            InvisibleOriginalTransparency[part] = part.Transparency
+            InvisibleOriginalCanCollide[part] = part.CanCollide
+            part.Transparency = 0.5
+            part.CanCollide = false
+        end
+    end
+    rootPart.Transparency = 1
+    pcall(function() RunService:UnbindFromRenderStep(InvisibleRenderKey) end)
+    RunService:BindToRenderStep(InvisibleRenderKey, Enum.RenderPriority.Camera.Value - 1, function()
+        if SilentAimSettings.InvisibleEnabled and InvisibleRealCFrame and rootPart.Parent then
+            rootPart.CFrame = InvisibleRealCFrame
+            if InvisibleAnimationTrack then
+                InvisibleAnimationTrack:AdjustWeight(0.001)
+            end
+        end
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not SilentAimSettings.InvisibleEnabled then return end
+    local character = LocalPlayer.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart then return end
+    local isR15 = humanoid.RigType == Enum.HumanoidRigType.R15
+    local dropOffset = humanoid.HipHeight + (rootPart.Size.Y / 2) - 1
+    InvisibleRealCFrame = rootPart.CFrame
+    rootPart.CFrame = (rootPart.CFrame - Vector3.new(0, dropOffset, 0)) * CFrame.Angles(math.rad(isR15 and 180 or 90), 0, 0)
+    local currentVelocity = rootPart.AssemblyLinearVelocity
+    rootPart.AssemblyLinearVelocity = Vector3.new(currentVelocity.X, 0, currentVelocity.Z)
+    if InvisibleAnimationTrack then
+        InvisibleAnimationTrack:AdjustWeight(100)
+    end
+end)
+
+-- Korblox (Precision Hub ids)
+local KorbloxMeshId = "rbxassetid://101851696"
+local KorbloxTextureId = "rbxassetid://101851254"
+
+local function applyKorblox(character)
+    local rightLeg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightUpperLeg")
+    if not rightLeg then return end
+    for _, v in ipairs(rightLeg:GetChildren()) do
+        if v:IsA("SpecialMesh") or v:IsA("CharacterMesh") then
+            v:Destroy()
+        end
+    end
+    local mesh = Instance.new("SpecialMesh")
+    mesh.MeshType = Enum.MeshType.FileMesh
+    mesh.MeshId = KorbloxMeshId
+    mesh.TextureId = KorbloxTextureId
+    mesh.Scale = Vector3.new(1, 1, 1)
+    mesh.Parent = rightLeg
+end
+
+-- Headless (Precision Hub ids)
+local HeadlessMeshId = "rbxassetid://1095708"
+
+local function applyHeadless(character)
+    local head = character:FindFirstChild("Head")
+    if not head then return end
+    head.Transparency = 1
+    head.CanCollide = false
+    local face = head:FindFirstChildOfClass("Decal")
+    if face then face:Destroy() end
+    for _, v in ipairs(head:GetChildren()) do
+        if v:IsA("SpecialMesh") or v:IsA("CharacterMesh") then
+            v:Destroy()
+        end
+    end
+    local mesh = Instance.new("SpecialMesh")
+    mesh.MeshType = Enum.MeshType.FileMesh
+    mesh.MeshId = HeadlessMeshId
+    mesh.Scale = Vector3.new(0.001, 0.001, 0.001)
+    mesh.Parent = head
+end
+
+-- reapply on respawn
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(1)
+    if SilentAimSettings.NoclipEnabled then startNoclip() end
+    if SilentAimSettings.InvisibleEnabled then startInvisible() end
+    if SilentAimSettings.HeadlessEnabled then applyHeadless(char) end
+    if SilentAimSettings.KorbloxEnabled then applyKorblox(char) end
+    task.wait(0.1)
+    applySpeed(SilentAimSettings.SpeedValue)
+    applyJumpPower(SilentAimSettings.JumpPowerValue)
+end)
+
+-- ============ GUI ============
 local gui = Instance.new("ScreenGui")
 gui.Name = "SpentHub"
 gui.ResetOnSpawn = false
@@ -778,7 +977,7 @@ local title = Instance.new("TextLabel", titleBar)
 title.Size = UDim2.new(1, -240, 1, 0)
 title.Position = UDim2.new(0, 50, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "SPENT HUB · v19"
+title.Text = "SPENT HUB"
 title.TextColor3 = Theme.TEXT_STRONG
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -825,11 +1024,13 @@ local function makeTitleBtn(symbol, orderX)
     btn.AutoButtonColor = false
     btn.ZIndex = 103
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0.35, 0)
+
     local btnGlow = Instance.new("UIStroke", btn)
     btnGlow.Color = Theme.ACCENT
     btnGlow.Thickness = 2
     btnGlow.Transparency = 1
     Instance.new("UICorner", btnGlow).CornerRadius = UDim.new(0.35, 0)
+
     btn.MouseButton1Click:Connect(function() createRipple(btn, UDim2.new(0.5, 0, 0.5, 0)) end)
     btn.MouseEnter:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
@@ -1079,24 +1280,8 @@ local notifLayout = Instance.new("UIListLayout", notifFrame)
 notifLayout.Padding = UDim.new(0, 10)
 notifLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-local NOTIF_ICON = {
-    on = "+", off = "x", gear = "*", info = "i", warn = "!",
-    success = "+", error = "x", save = "v", load = "^",
-    accent = "*", boot = ">",
-}
-
 local notifQueue = 0
 local notifStaggerDelay = 0.05
-
-local function pickIcon(text)
-    local lower = string.lower(text)
-    if lower:find("enabled") then return NOTIF_ICON.on end
-    if lower:find("disabled") then return NOTIF_ICON.off end
-    if lower:find("loaded") then return NOTIF_ICON.load end
-    if lower:find("saved") or lower:find("created") then return NOTIF_ICON.save end
-    if lower:find("fail") or lower:find("error") then return NOTIF_ICON.error end
-    return NOTIF_ICON.info
-end
 
 local function notify(text, color)
     color = color or Theme.ACCENT
@@ -1104,23 +1289,10 @@ local function notify(text, color)
     local myOrder = notifQueue
     task.delay((myOrder - 1) * notifStaggerDelay, function()
         local LIFETIME = 3.5
-        local paused = false
-        local remaining = LIFETIME
-        local lastTick = tick()
-
         local wrap = Instance.new("Frame", notifFrame)
         wrap.Size = UDim2.new(1, 0, 0, 48)
         wrap.BackgroundTransparency = 1
         wrap.ZIndex = 501
-
-        local shadowCard = Instance.new("Frame", wrap)
-        shadowCard.Size = UDim2.new(1, 0, 1, 0)
-        shadowCard.Position = UDim2.new(0, 3, 0, 3)
-        shadowCard.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        shadowCard.BackgroundTransparency = 0.55
-        shadowCard.BorderSizePixel = 0
-        shadowCard.ZIndex = 501
-        Instance.new("UICorner", shadowCard).CornerRadius = UDim.new(0.16, 0)
 
         local card = Instance.new("Frame", wrap)
         card.Size = UDim2.new(1, 0, 1, 0)
@@ -1135,12 +1307,6 @@ local function notify(text, color)
         stroke.Thickness = 1
         stroke.Transparency = 0.4
 
-        local glow = Instance.new("UIStroke", card)
-        glow.Color = color
-        glow.Thickness = 4
-        glow.Transparency = 0.8
-        Instance.new("UICorner", glow).CornerRadius = UDim.new(0.16, 0)
-
         local bar = Instance.new("Frame", card)
         bar.Size = UDim2.new(0, 3.5, 1, -10)
         bar.Position = UDim2.new(0, 5, 0, 5)
@@ -1149,27 +1315,9 @@ local function notify(text, color)
         bar.ZIndex = 503
         Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
 
-        local iconCircle = Instance.new("Frame", card)
-        iconCircle.Size = UDim2.new(0, 26, 0, 26)
-        iconCircle.Position = UDim2.new(0, 12, 0.5, -13)
-        iconCircle.BackgroundColor3 = color
-        iconCircle.BackgroundTransparency = 0.2
-        iconCircle.BorderSizePixel = 0
-        iconCircle.ZIndex = 503
-        Instance.new("UICorner", iconCircle).CornerRadius = UDim.new(1, 0)
-
-        local iconLabel = Instance.new("TextLabel", iconCircle)
-        iconLabel.Size = UDim2.new(1, 0, 1, 0)
-        iconLabel.BackgroundTransparency = 1
-        iconLabel.Text = pickIcon(text)
-        iconLabel.TextColor3 = color
-        iconLabel.Font = Enum.Font.GothamBold
-        iconLabel.TextSize = 14
-        iconLabel.ZIndex = 504
-
         local lbl = Instance.new("TextLabel", card)
-        lbl.Size = UDim2.new(1, -60, 1, -8)
-        lbl.Position = UDim2.new(0, 48, 0, 0)
+        lbl.Size = UDim2.new(1, -20, 1, -8)
+        lbl.Position = UDim2.new(0, 16, 0, 0)
         lbl.BackgroundTransparency = 1
         lbl.Text = text
         lbl.TextColor3 = Theme.TEXT_STRONG
@@ -1179,91 +1327,32 @@ local function notify(text, color)
         lbl.TextYAlignment = Enum.TextYAlignment.Center
         lbl.ZIndex = 503
 
-        local progressTrack = Instance.new("Frame", card)
-        progressTrack.Size = UDim2.new(1, -14, 0, 2)
-        progressTrack.Position = UDim2.new(0, 7, 1, -5)
-        progressTrack.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-        progressTrack.BorderSizePixel = 0
-        progressTrack.ZIndex = 503
-        Instance.new("UICorner", progressTrack).CornerRadius = UDim.new(1, 0)
-
-        local progressFill = Instance.new("Frame", progressTrack)
-        progressFill.Size = UDim2.new(1, 0, 1, 0)
-        progressFill.BackgroundColor3 = color
-        progressFill.BorderSizePixel = 0
-        progressFill.ZIndex = 504
-        Instance.new("UICorner", progressFill).CornerRadius = UDim.new(1, 0)
-
         wrap.Position = UDim2.new(1.2, 0, 0, 0)
         card.BackgroundTransparency = 1
-        shadowCard.BackgroundTransparency = 1
         lbl.TextTransparency = 1
-        iconLabel.TextTransparency = 1
         bar.BackgroundTransparency = 1
 
         TweenService:Create(wrap, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            Position = UDim2.new(0.02, 0, 0, 0),
+            Position = UDim2.new(0, 0, 0, 0),
         }):Play()
-        task.delay(0.08, function()
-            TweenService:Create(wrap, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
-                Position = UDim2.new(0, 0, 0, 0),
-            }):Play()
-        end)
         TweenService:Create(card, TweenInfo.new(0.22), {BackgroundTransparency = 0.08}):Play()
-        TweenService:Create(shadowCard, TweenInfo.new(0.22), {BackgroundTransparency = 0.55}):Play()
         TweenService:Create(lbl, TweenInfo.new(0.22), {TextTransparency = 0}):Play()
-        TweenService:Create(iconLabel, TweenInfo.new(0.22), {TextTransparency = 0}):Play()
         TweenService:Create(bar, TweenInfo.new(0.22), {BackgroundTransparency = 0}):Play()
 
-        local dying = false
-        local function destroyNotif()
-            if dying then return end
-            dying = true
+        task.delay(LIFETIME, function()
             TweenService:Create(wrap, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
                 Position = UDim2.new(1.2, 0, 0, 0),
             }):Play()
             TweenService:Create(card, TweenInfo.new(0.22), {BackgroundTransparency = 1}):Play()
-            TweenService:Create(shadowCard, TweenInfo.new(0.22), {BackgroundTransparency = 1}):Play()
             TweenService:Create(lbl, TweenInfo.new(0.22), {TextTransparency = 1}):Play()
-            TweenService:Create(iconLabel, TweenInfo.new(0.22), {TextTransparency = 1}):Play()
             TweenService:Create(bar, TweenInfo.new(0.22), {BackgroundTransparency = 1}):Play()
-            TweenService:Create(progressFill, TweenInfo.new(0.22), {BackgroundTransparency = 1}):Play()
             task.wait(0.28)
             pcall(function() wrap:Destroy() end)
-        end
-
-        card.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                destroyNotif()
-            end
-        end)
-        card.MouseEnter:Connect(function()
-            paused = true
-            TweenService:Create(stroke, TweenInfo.new(0.15), {Transparency = 0}):Play()
-            TweenService:Create(glow, TweenInfo.new(0.15), {Transparency = 0.5}):Play()
-        end)
-        card.MouseLeave:Connect(function()
-            paused = false
-            TweenService:Create(stroke, TweenInfo.new(0.15), {Transparency = 0.4}):Play()
-            TweenService:Create(glow, TweenInfo.new(0.15), {Transparency = 0.8}):Play()
-        end)
-
-        task.spawn(function()
-            while not dying do
-                task.wait(0.05)
-                local now = tick()
-                local dt = now - lastTick
-                lastTick = now
-                if not paused then
-                    remaining = remaining - dt
-                    if remaining <= 0 then destroyNotif() break end
-                    progressFill.Size = UDim2.new(math.clamp(remaining / LIFETIME, 0, 1), 0, 1, 0)
-                end
-            end
         end)
     end)
 end
 
+-- widget builders
 local function makeSection(parent, text)
     local s = Instance.new("TextLabel", parent)
     s.Size = UDim2.new(1, 0, 0, 18)
@@ -1292,12 +1381,6 @@ local function makeToggle(parent, name, default, callback, tooltip)
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
 
-    local glow = Instance.new("UIStroke", btn)
-    glow.Color = Theme.ACCENT
-    glow.Thickness = 3
-    glow.Transparency = 1
-    Instance.new("UICorner", glow).CornerRadius = UDim.new(0.22, 0)
-
     local lbl = Instance.new("TextLabel", btn)
     lbl.Size = UDim2.new(0.7, 0, 1, 0)
     lbl.Position = UDim2.new(0, 12, 0, 0)
@@ -1308,18 +1391,12 @@ local function makeToggle(parent, name, default, callback, tooltip)
     lbl.TextSize = 11
     lbl.TextXAlignment = Enum.TextXAlignment.Left
 
-    local ind = Instance.new("Frame", btn)
+    local ind = Instance.new("Frame", ind or btn)
     ind.Size = UDim2.new(0, 38, 0, 18)
     ind.Position = UDim2.new(1, -48, 0.5, -9)
     ind.BackgroundColor3 = default and Theme.ACCENT or Color3.fromRGB(45, 45, 55)
     ind.BorderSizePixel = 0
     Instance.new("UICorner", ind).CornerRadius = UDim.new(1, 0)
-
-    local indGlow = Instance.new("UIStroke", ind)
-    indGlow.Color = Theme.ACCENT
-    indGlow.Thickness = 2
-    indGlow.Transparency = default and 0.3 or 1
-    Instance.new("UICorner", indGlow).CornerRadius = UDim.new(1, 0)
 
     local dot = Instance.new("Frame", ind)
     dot.Size = UDim2.new(0, 14, 0, 14)
@@ -1338,10 +1415,6 @@ local function makeToggle(parent, name, default, callback, tooltip)
         TweenService:Create(ind, TweenInfo.new(0.18), {
             BackgroundColor3 = state and Theme.ACCENT or Color3.fromRGB(45, 45, 55),
         }):Play()
-        TweenService:Create(indGlow, TweenInfo.new(0.18), {
-            Transparency = state and 0.3 or 1,
-        }):Play()
-        TweenService:Create(glow, TweenInfo.new(0.2), {Transparency = state and 0.6 or 1}):Play()
         callback(state)
     end)
 
@@ -1437,12 +1510,6 @@ local function makeButton(parent, name, callback, color)
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
 
-    local glow = Instance.new("UIStroke", btn)
-    glow.Color = color or Theme.ACCENT
-    glow.Thickness = 2
-    glow.Transparency = 1
-    Instance.new("UICorner", glow).CornerRadius = UDim.new(0.22, 0)
-
     btn.MouseButton1Click:Connect(function()
         createRipple(btn, UDim2.new(0.5, 0, 0.5, 0))
         callback()
@@ -1453,7 +1520,6 @@ local function makeButton(parent, name, callback, color)
             TextColor3 = Theme.TEXT_STRONG, Size = UDim2.new(1, 0, 0, 34),
         }):Play()
         TweenService:Create(stroke, TweenInfo.new(0.16), {Transparency = 0.2}):Play()
-        TweenService:Create(glow, TweenInfo.new(0.16), {Transparency = 0.5}):Play()
     end)
     btn.MouseLeave:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
@@ -1461,7 +1527,6 @@ local function makeButton(parent, name, callback, color)
             TextColor3 = Theme.TEXT, Size = UDim2.new(1, 0, 0, 32),
         }):Play()
         TweenService:Create(stroke, TweenInfo.new(0.16), {Transparency = 0.6}):Play()
-        TweenService:Create(glow, TweenInfo.new(0.16), {Transparency = 1}):Play()
     end)
 end
 
@@ -1486,12 +1551,6 @@ local function makeDropdown(parent, name, values, current, callback)
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
 
-    local glow = Instance.new("UIStroke", btn)
-    glow.Color = Theme.ACCENT
-    glow.Thickness = 2
-    glow.Transparency = 1
-    Instance.new("UICorner", glow).CornerRadius = UDim.new(0.22, 0)
-
     btn.MouseButton1Click:Connect(function()
         idx = idx + 1
         if idx > #values then idx = 1 end
@@ -1505,7 +1564,6 @@ local function makeDropdown(parent, name, values, current, callback)
             TextColor3 = Theme.TEXT_STRONG, Size = UDim2.new(1, 0, 0, 34),
         }):Play()
         TweenService:Create(stroke, TweenInfo.new(0.16), {Transparency = 0.2}):Play()
-        TweenService:Create(glow, TweenInfo.new(0.16), {Transparency = 0.5}):Play()
     end)
     btn.MouseLeave:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
@@ -1513,38 +1571,30 @@ local function makeDropdown(parent, name, values, current, callback)
             TextColor3 = Theme.TEXT, Size = UDim2.new(1, 0, 0, 32),
         }):Play()
         TweenService:Create(stroke, TweenInfo.new(0.16), {Transparency = 0.6}):Play()
-        TweenService:Create(glow, TweenInfo.new(0.16), {Transparency = 1}):Play()
     end)
 end
 
 local whitelistPlayerRows = {}
-
 local function rebuildWhitelistPlayerList(container)
     for _, child in ipairs(container:GetChildren()) do
-        if child:IsA("Frame") or child:IsA("TextLabel") then
-            child:Destroy()
-        end
+        if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end
     end
     table.clear(whitelistPlayerRows)
-
     local allPlayers = Players:GetPlayers()
     if #allPlayers == 0 then
         local empty = Instance.new("TextLabel", container)
         empty.Size = UDim2.new(1, 0, 0, 24)
         empty.BackgroundTransparency = 1
-        empty.Text = "  no players in server"
+        empty.Text = " no players in server"
         empty.TextColor3 = Theme.TEXT_DIM
         empty.Font = Enum.Font.Gotham
         empty.TextSize = 10
         empty.TextXAlignment = Enum.TextXAlignment.Left
         return
     end
-
     for _, plr in ipairs(allPlayers) do
         if plr == LocalPlayer then continue end
-
         local isWL = Whitelist[string.lower(plr.Name)] == true
-
         local row = Instance.new("Frame", container)
         row.Size = UDim2.new(1, 0, 0, 36)
         row.BackgroundColor3 = Theme.BG_OPT
@@ -1567,16 +1617,6 @@ local function rebuildWhitelistPlayerList(container)
         nameLbl.TextSize = 11
         nameLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-        local userLbl = Instance.new("TextLabel", row)
-        userLbl.Size = UDim2.new(1, -60, 0.5, 0)
-        userLbl.Position = UDim2.new(0, 10, 0.5, -1)
-        userLbl.BackgroundTransparency = 1
-        userLbl.Text = "@" .. plr.Name
-        userLbl.TextColor3 = Theme.TEXT_DIM
-        userLbl.Font = Enum.Font.Gotham
-        userLbl.TextSize = 10
-        userLbl.TextXAlignment = Enum.TextXAlignment.Left
-
         local ind = Instance.new("Frame", row)
         ind.Size = UDim2.new(0, 34, 0, 16)
         ind.Position = UDim2.new(1, -44, 0.5, -8)
@@ -1597,7 +1637,6 @@ local function rebuildWhitelistPlayerList(container)
         toggleBtn.BackgroundTransparency = 1
         toggleBtn.Text = ""
         toggleBtn.ZIndex = 2
-
         toggleBtn.MouseButton1Click:Connect(function()
             state = not state
             if state then
@@ -1620,59 +1659,36 @@ local function rebuildWhitelistPlayerList(container)
             notify((state and "whitelisted " or "un-whitelisted ") .. plr.Name, state and Theme.ACCENT or Theme.TEXT_DIM)
         end)
 
-        row.MouseEnter:Connect(function()
-            TweenService:Create(row, TweenInfo.new(0.14), {BackgroundColor3 = Theme.BG_HOVER, BackgroundTransparency = 0}):Play()
-        end)
-        row.MouseLeave:Connect(function()
-            TweenService:Create(row, TweenInfo.new(0.14), {BackgroundColor3 = Theme.BG_OPT, BackgroundTransparency = 0.08}):Play()
-        end)
-
         whitelistPlayerRows[plr] = row
     end
 end
 
+-- FOV dock (no Static toggle now)
 local function buildFovDock()
     for _, c in ipairs(rightScroll:GetChildren()) do
         if c:IsA("GuiObject") then c:Destroy() end
     end
-    if rightScroll:FindFirstChildOfClass("UIListLayout") then
-        rightScroll:FindFirstChildOfClass("UIListLayout"):Destroy()
-    end
-
+    local oldLayout = rightScroll:FindFirstChildOfClass("UIListLayout")
+    if oldLayout then oldLayout:Destroy() end
     local rl = Instance.new("UIListLayout", rightScroll)
     rl.Padding = UDim.new(0, 6)
     rl.SortOrder = Enum.SortOrder.LayoutOrder
 
     makeSection(rightScroll, "FOV CIRCLE")
-
     makeToggle(rightScroll, "Fov Circle", SilentAimSettings.FOVVisible, function(s)
         SilentAimSettings.FOVVisible = s
         fov_circle.Visible = s
         notify("Fov Circle " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
     end, "Toggle the FOV circle drawing")
-
-    makeToggle(rightScroll, "Static FOV", SilentAimSettings.FOVStatic, function(s)
-        SilentAimSettings.FOVStatic = s
-        if s then
-            SilentAimSettings.FOVCenter = false
-        end
-        notify("Static FOV " .. (s and "on" or "off"), Theme.ACCENT)
-    end, "Follows cursor position")
-
     makeToggle(rightScroll, "Center FOV", SilentAimSettings.FOVCenter, function(s)
         SilentAimSettings.FOVCenter = s
-        if s then
-            SilentAimSettings.FOVStatic = false
-        end
         notify("Center FOV " .. (s and "on" or "off"), Theme.ACCENT)
     end, "Locks to screen center")
-
     makeSlider(rightScroll, "Fov Circle Size", 0, 400, SilentAimSettings.FOVRadius, function(v)
         SilentAimSettings.FOVRadius = v
         fov_circle.Radius = v
         statusLabel.Text = "* idle · method: " .. SilentAimSettings.SilentAimMethod .. " · fov: " .. v
     end)
-
     task.defer(function()
         rightScroll.CanvasSize = UDim2.new(0, 0, 0, rl.AbsoluteContentSize.Y + 8)
     end)
@@ -1696,16 +1712,12 @@ local function buildMain()
         mouse_box.Visible = s and SilentAimSettings.ShowSilentAimTarget
         notify("Silent Aim " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
     end, "Master silent aim toggle")
-    makeDropdown(scroll, "Target Part", {"Head", "HumanoidRootPart", "Random"}, SilentAimSettings.TargetPart, function(v)
-        SilentAimSettings.TargetPart = v
-    end)
+    makeDropdown(scroll, "Target Part", {"Head", "HumanoidRootPart", "Random"}, SilentAimSettings.TargetPart, function(v) SilentAimSettings.TargetPart = v end)
     makeDropdown(scroll, "Method", {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"}, SilentAimSettings.SilentAimMethod, function(v)
         SilentAimSettings.SilentAimMethod = v
         statusLabel.Text = "* method: " .. v
     end)
-    makeSlider(scroll, "Hit Chance", 0, 100, SilentAimSettings.HitChance, function(v)
-        SilentAimSettings.HitChance = v
-    end)
+    makeSlider(scroll, "Hit Chance", 0, 100, SilentAimSettings.HitChance, function(v) SilentAimSettings.HitChance = v end)
 
     makeSection(scroll, "AUTOSHOOT")
     makeToggle(scroll, "Autoshoot", SilentAimSettings.AutoshootEnabled, function(s)
@@ -1714,12 +1726,8 @@ local function buildMain()
     end, "Auto fires at current silent aim target")
 
     makeSection(scroll, "FILTERS")
-    makeToggle(scroll, "Team Check", SilentAimSettings.TeamCheck, function(s)
-        SilentAimSettings.TeamCheck = s
-    end)
-    makeToggle(scroll, "Visible Check", SilentAimSettings.VisibleCheck, function(s)
-        SilentAimSettings.VisibleCheck = s
-    end)
+    makeToggle(scroll, "Team Check", SilentAimSettings.TeamCheck, function(s) SilentAimSettings.TeamCheck = s end)
+    makeToggle(scroll, "Visible Check", SilentAimSettings.VisibleCheck, function(s) SilentAimSettings.VisibleCheck = s end)
 
     makeSection(scroll, "TARGET TEAM")
     makeToggle(scroll, "Target Cop", SilentAimSettings.TargetCop, function(s)
@@ -1736,19 +1744,17 @@ local function buildMain()
     end, "Aim at Criminals team")
 
     makeSection(scroll, "PREDICTION")
-    makeToggle(scroll, "Mouse.Hit Prediction", SilentAimSettings.MouseHitPrediction, function(s)
-        SilentAimSettings.MouseHitPrediction = s
-    end)
+    makeToggle(scroll, "Mouse.Hit Prediction", SilentAimSettings.MouseHitPrediction, function(s) SilentAimSettings.MouseHitPrediction = s end)
     makeSlider(scroll, "Prediction x1000", 165, 1000, math.floor(SilentAimSettings.MouseHitPredictionAmount * 1000), function(v)
         SilentAimSettings.MouseHitPredictionAmount = v / 1000
         PredictionAmount = v / 1000
     end)
     makeToggle(scroll, "Show Silent Aim Target", SilentAimSettings.ShowSilentAimTarget, function(s)
         SilentAimSettings.ShowSilentAimTarget = s
+        mouse_box.Visible = s and SilentAimSettings.Enabled
     end)
 
     makeSection(scroll, "WHITELIST PLAYER")
-
     local wlDesc = Instance.new("TextLabel", scroll)
     wlDesc.Size = UDim2.new(1, 0, 0, 20)
     wlDesc.BackgroundTransparency = 1
@@ -1793,15 +1799,11 @@ local function buildMain()
 
     Players.PlayerAdded:Connect(function()
         task.wait(0.5)
-        if currentPage == "main" then
-            rebuildWhitelistPlayerList(wlListContainer)
-        end
+        if currentPage == "main" then rebuildWhitelistPlayerList(wlListContainer) end
     end)
     Players.PlayerRemoving:Connect(function()
         task.wait(0.1)
-        if currentPage == "main" then
-            rebuildWhitelistPlayerList(wlListContainer)
-        end
+        if currentPage == "main" then rebuildWhitelistPlayerList(wlListContainer) end
     end)
 end
 
@@ -1817,26 +1819,52 @@ local function buildESP()
     end, "Highlight and trace use team colors")
 
     makeSection(scroll, "ESP ELEMENTS")
-    makeToggle(scroll, "Highlight", SilentAimSettings.ESP_Highlight, function(s)
-        SilentAimSettings.ESP_Highlight = s
-    end)
-    makeToggle(scroll, "Name", SilentAimSettings.ESP_Name, function(s)
-        SilentAimSettings.ESP_Name = s
-    end)
-    makeToggle(scroll, "Health Bar", SilentAimSettings.ESP_Health, function(s)
-        SilentAimSettings.ESP_Health = s
-    end)
-    makeToggle(scroll, "Trace Line", SilentAimSettings.ESP_Trace, function(s)
-        SilentAimSettings.ESP_Trace = s
-    end)
+    makeToggle(scroll, "Highlight", SilentAimSettings.ESP_Highlight, function(s) SilentAimSettings.ESP_Highlight = s end)
+    makeToggle(scroll, "Name", SilentAimSettings.ESP_Name, function(s) SilentAimSettings.ESP_Name = s end)
+    makeToggle(scroll, "Health Bar", SilentAimSettings.ESP_Health, function(s) SilentAimSettings.ESP_Health = s end)
+    makeToggle(scroll, "Trace Line", SilentAimSettings.ESP_Trace, function(s) SilentAimSettings.ESP_Trace = s end)
 
     makeSection(scroll, "ESP RANGE")
-    makeSlider(scroll, "Max Distance", 100, 3000, SilentAimSettings.ESP_MaxDistance, function(v)
-        SilentAimSettings.ESP_MaxDistance = v
-    end)
+    makeSlider(scroll, "Max Distance", 100, 3000, SilentAimSettings.ESP_MaxDistance, function(v) SilentAimSettings.ESP_MaxDistance = v end)
 end
 
-local function updateThemeColors()
+local function buildVisuals()
+    makeSection(scroll, "PLAYER SETTINGS")
+    makeToggle(scroll, "Noclip", SilentAimSettings.NoclipEnabled, function(s)
+        SilentAimSettings.NoclipEnabled = s
+        if s then startNoclip() else stopNoclip() end
+        notify("Noclip " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Walk through parts")
+    makeSlider(scroll, "Speed", 8, 200, SilentAimSettings.SpeedValue, function(v)
+        SilentAimSettings.SpeedValue = v
+        applySpeed(v)
+    end)
+    makeSlider(scroll, "Jump Power", 50, 500, SilentAimSettings.JumpPowerValue, function(v)
+        SilentAimSettings.JumpPowerValue = v
+        applyJumpPower(v)
+    end)
+    makeToggle(scroll, "Invisible", SilentAimSettings.InvisibleEnabled, function(s)
+        SilentAimSettings.InvisibleEnabled = s
+        if s then startInvisible() else stopInvisible() end
+        notify("Invisible " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Hide your character")
+
+    makeSection(scroll, "VISUAL")
+    makeToggle(scroll, "Korblox", SilentAimSettings.KorbloxEnabled, function(s)
+        SilentAimSettings.KorbloxEnabled = s
+        local char = LocalPlayer.Character
+        if s and char then applyKorblox(char) end
+        notify("Korblox " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Apply korblox leg mesh")
+    makeToggle(scroll, "Headless", SilentAimSettings.HeadlessEnabled, function(s)
+        SilentAimSettings.HeadlessEnabled = s
+        local char = LocalPlayer.Character
+        if s and char then applyHeadless(char) end
+        notify("Headless " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Apply headless mesh")
+end
+
+function updateThemeColors()
     mainGlow.Color = Theme.ACCENT
     hubGlow.Color = Theme.ACCENT
     mouse_box.Color = Theme.ACCENT
@@ -1845,11 +1873,10 @@ local function updateThemeColors()
     rightHeader.TextColor3 = Theme.ACCENT
     icon.TextColor3 = Theme.ACCENT
     accentLine.BackgroundColor3 = Theme.ACCENT
-    accentGlow.Color = Theme.ACCENT
 end
 
 local MainFileName = "UniversalSilentAim"
-local SelectedFile, FileToSave = "", ""
+local FileToSave = ""
 
 do
     if not isfolder(MainFileName) then makefolder(MainFileName) end
@@ -1930,6 +1957,7 @@ local function buildConfig()
             notify("Created: " .. FileToSave, Theme.ACCENT)
         end
     end)
+
     makeSection(scroll, "EXISTING CONFIGS")
     local files = GetFiles()
     if #files == 0 then
@@ -1943,14 +1971,8 @@ local function buildConfig()
         empty.TextXAlignment = Enum.TextXAlignment.Left
     else
         for _, name in ipairs(files) do
-            makeButton(scroll, "Load: " .. name, function()
-                LoadFile(name)
-                notify("Loaded: " .. name, Theme.ACCENT)
-            end)
-            makeButton(scroll, "Save: " .. name, function()
-                UpdateFile(name)
-                notify("Saved: " .. name, Theme.ACCENT)
-            end)
+            makeButton(scroll, "Load: " .. name, function() LoadFile(name) notify("Loaded: " .. name, Theme.ACCENT) end)
+            makeButton(scroll, "Save: " .. name, function() UpdateFile(name) notify("Saved: " .. name, Theme.ACCENT) end)
         end
     end
 
@@ -1998,27 +2020,30 @@ local function buildInfo()
     info.TextXAlignment = Enum.TextXAlignment.Left
     info.TextYAlignment = Enum.TextYAlignment.Top
     info.Text = [[
- SPENT HUB v19
+ SPENT HUB
 
- FOV Circle (always on right dock):
-  Fov Circle - toggle the drawing
-  Static FOV - follows cursor (Averiias method)
-  Center FOV - locks to screen center
+ FOV Circle (right dock):
+  Fov Circle    - toggle drawing
+  Center FOV    - locks to screen center
   Fov Circle Size - adjusts radius
 
- Whitelist Player (in Main tab):
-  Shows all players in the server
-  Toggle each player individually
-  Whitelisted = skipped by aim + ESP
-  Refresh button to update list
+ Visuals tab:
+  Player Settings
+   - Noclip
+   - Speed
+   - Jump Power
+   - Invisible
+  Visual
+   - Korblox
+   - Headless
 
- Autoshoot (in Main tab):
-  Works with silent aim target
-  Auto fires equipped gun at target
-  Respects per-weapon fire rate
-  Requires gun equipped from list:
-  AK-47, M9, M4A1, MP5, FAL,
-  Revolver, M700, Remington 870
+ Main tab:
+  Silent Aim
+  Autoshoot
+  Filters
+  Target Team
+  Prediction
+  Whitelist Player
 
  Keybinds:
   RAlt  - toggle silent aim
@@ -2035,6 +2060,7 @@ end
 local tabs = {
     {name = "Main", page = "main", build = buildMain},
     {name = "ESP", page = "esp", build = buildESP},
+    {name = "Visuals", page = "visuals", build = buildVisuals},
     {name = "Config", page = "config", build = buildConfig},
     {name = "Info", page = "info", build = buildInfo},
 }
@@ -2098,12 +2124,6 @@ for _, t in ipairs(tabs) do
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
 
-    local glow = Instance.new("UIStroke", btn)
-    glow.Color = Theme.ACCENT
-    glow.Thickness = 2
-    glow.Transparency = 1
-    Instance.new("UICorner", glow).CornerRadius = UDim.new(0.24, 0)
-
     local underline = Instance.new("Frame", holder)
     underline.Size = UDim2.new(0, 3, 1, -8)
     underline.Position = UDim2.new(0, 2, 0, 4)
@@ -2118,14 +2138,12 @@ for _, t in ipairs(tabs) do
             BackgroundTransparency = 0, BackgroundColor3 = Theme.BG_HOVER, TextColor3 = Theme.TEXT_STRONG,
         }):Play()
         TweenService:Create(stroke, TweenInfo.new(0.16), {Transparency = 0.2}):Play()
-        TweenService:Create(glow, TweenInfo.new(0.16), {Transparency = 0.5}):Play()
     end)
     btn.MouseLeave:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
             BackgroundTransparency = 0.08, BackgroundColor3 = Theme.BG_OPT, TextColor3 = Theme.TEXT,
         }):Play()
         TweenService:Create(stroke, TweenInfo.new(0.16), {Transparency = 0.6}):Play()
-        TweenService:Create(glow, TweenInfo.new(0.16), {Transparency = 1}):Play()
     end)
 
     table.insert(tabButtons, {btn = btn, page = t.page})
@@ -2134,6 +2152,7 @@ end
 
 buildFovDock()
 
+-- open/close
 local openState = "idle"
 local activeOpenTweens, activeCloseTweens = {}, {}
 
@@ -2292,6 +2311,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
         pcall(function() gui:Destroy() end)
         pcall(function() fov_circle:Remove() end)
         pcall(function() mouse_box:Remove() end)
+        stopNoclip()
+        stopInvisible()
         for _, p in ipairs(Players:GetPlayers()) do clearESP(p) end
         print("SPENT HUB unloaded.")
     end
@@ -2318,8 +2339,6 @@ task.spawn(function()
             fov_circle.Radius = SilentAimSettings.FOVRadius
             if SilentAimSettings.FOVCenter then
                 fov_circle.Position = getCenter()
-            elseif SilentAimSettings.FOVStatic then
-                fov_circle.Position = getCursorPos()
             else
                 fov_circle.Position = getCursorPos()
             end
@@ -2327,7 +2346,6 @@ task.spawn(function()
         else
             fov_circle.Visible = false
         end
-
         updateESP()
     end)
 end)
@@ -2407,8 +2425,8 @@ main.Visible = true
 shadow.Visible = true
 bgBlur.Visible = true
 openState = "open"
-notify("SPENT HUB v19 loaded", Theme.ACCENT)
+notify("SPENT HUB loaded", Theme.ACCENT)
 task.delay(0.4, function()
-    notify("RAlt = toggle aim · RShift = toggle gui", Theme.TEXT_DIM)
+    notify("visuals tab has noclip, speed, invis, korblox, headless", Theme.TEXT_DIM)
 end)
-print("SPENT HUB v19 loaded.")
+print("SPENT HUB loaded.")
