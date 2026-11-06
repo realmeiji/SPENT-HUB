@@ -8,7 +8,7 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
--- startup (shortened: no 3s wait, no tween spam)
+-- startup (shortened)
 local startupGui = Instance.new("ScreenGui")
 startupGui.Name = "SpentHubStartup"
 startupGui.ResetOnSpawn = false
@@ -512,33 +512,24 @@ local function startFastSwitch()
     end)
 end
 
--- NOCLIP (Stepped loop only)
-local noclipConnection = nil
-local function noclipStep()
-    local char = LocalPlayer.Character
-    if not char then return end
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") and part.CanCollide then
-            part.CanCollide = false
+-- NOCLIP + PUNCH (Kayen version)
+pcall(function()
+    local hook = newcclosure(function() end)
+    for _, obj in next, getgc(false) do
+        if typeof(obj) == "function" then
+            local ok, source = pcall(debug.info, obj, "s")
+            if ok and source and source:find("CharacterCollision") then
+                pcall(hookfunction, obj, hook)
+            end
         end
     end
-end
-local function startNoclip()
-    if noclipConnection then return end
-    noclipConnection = RunService.Stepped:Connect(noclipStep)
-end
-local function stopNoclip()
-    if noclipConnection then
-        noclipConnection:Disconnect()
-        noclipConnection = nil
-    end
-end
+end)
 
--- ==================== NOCLIP PUNCH (FIXED) ====================
-local punchBusy = false
-local punchConnection = nil
+local noclipActive = false
+local wasInWall = false
+local noclipConn = nil
 
-local function noclipAll()
+local function noclipStep()
     local char = LocalPlayer.Character
     if not char then return end
     for _, part in ipairs(char:GetDescendants()) do
@@ -548,105 +539,44 @@ local function noclipAll()
     end
 end
 
-local function doNoclipPunch()
-    if punchBusy then return end
-    punchBusy = true
-
+local function isInsideWall()
     local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not char or not root or not hum then
-        punchBusy = false
-        return
-    end
-
-    local params = RaycastParams.new()
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    local params = OverlapParams.new()
+    params.FilterDescendantsInstances = {char}
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = { char }
-    params.IgnoreWater = true
-    params.RespectCanCollide = false
-
-    local dirs = {
-        Vector3.new(1,0,0), Vector3.new(-1,0,0),
-        Vector3.new(0,1,0), Vector3.new(0,-1,0),
-        Vector3.new(0,0,1), Vector3.new(0,0,-1),
-    }
-
-    local near = false
-    for _, d in ipairs(dirs) do
-        local result = workspace:Raycast(root.Position, d * 4, params)
-        if result and result.Instance then
-            near = true
-            break
-        end
-    end
-
-    if not near then
-        notify("No wall nearby", Theme.TEXT_DIM)
-        punchBusy = false
-        return
-    end
-
-    task.wait(0.3)
-
-    local stillNear = false
-    for _, d in ipairs(dirs) do
-        local result = workspace:Raycast(root.Position, d * 5, params)
-        if result and result.Instance then
-            stillNear = true
-            break
-        end
-    end
-
-    if not stillNear then
-        punchBusy = false
-        return
-    end
-
-    noclipAll()
-
-    local oldAutoRotate = hum.AutoRotate
-    local oldPlatformStand = hum.PlatformStand
-    hum.PlatformStand = true
-    hum.AutoRotate = false
-
-    local startTime = tick()
-    local PUNCH_WINDOW = 0.25
-    if punchConnection then punchConnection:Disconnect() end
-    punchConnection = RunService.PreSimulation:Connect(function()
-        if tick() - startTime > PUNCH_WINDOW then
-            if punchConnection then
-                punchConnection:Disconnect()
-                punchConnection = nil
-            end
-            return
-        end
-        noclipAll()
-    end)
-
-    task.wait(PUNCH_WINDOW + 0.05)
-
-    if punchConnection then
-        punchConnection:Disconnect()
-        punchConnection = nil
-    end
-    if char and char.Parent then
-        hum.PlatformStand = oldPlatformStand
-        hum.AutoRotate = oldAutoRotate
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then
-                if not SilentAimSettings.NoclipEnabled then
-                    part.CanCollide = true
-                end
-            end
-        end
-        local rp = char:FindFirstChild("HumanoidRootPart")
-        if rp then rp.CanCollide = false end
-    end
-
-    punchBusy = false
+    return #workspace:GetPartsInPart(hrp, params) > 0
 end
--- ================================================================
+
+local function stopNoclip()
+    noclipActive = false
+    wasInWall = false
+    if noclipConn then
+        noclipConn:Disconnect()
+        noclipConn = nil
+    end
+end
+
+local function startNoclip()
+    if noclipActive then return end
+    noclipActive = true
+    wasInWall = false
+    noclipConn = RunService.Stepped:Connect(noclipStep)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not noclipActive then return end
+    if isInsideWall() then
+        wasInWall = true
+    elseif wasInWall then
+        stopNoclip()
+    end
+end)
+
+local function doNoclipPunch()
+    task.delay(0.35, startNoclip)
+end
 
 local function applySpeed(v)
     local char = LocalPlayer.Character
@@ -981,7 +911,7 @@ local function updateESP()
     end
 end
 
--- ============ GUI (same look, cheaper) ============
+-- GUI
 local gui = Instance.new("ScreenGui")
 gui.Name = "SpentHub"
 gui.ResetOnSpawn = false
@@ -1083,7 +1013,6 @@ drag.Draggable = true
 drag.Active = true
 drag.ZIndex = 103
 
--- ripple is a no-op now (was spawning a Frame per click)
 local function createRipple(parent, position) end
 
 local function makeTitleBtn(symbol, orderX)
@@ -1387,7 +1316,6 @@ local function notify(text, color)
     end)
 end
 
--- widget builders (no tween on hover — instant color swap is cheap)
 local function makeSection(parent, text)
     local s = Instance.new("TextLabel", parent)
     s.Size = UDim2.new(1, 0, 0, 18)
@@ -1716,7 +1644,6 @@ local function rebuildWhitelistPlayerList(container)
     end
 end
 
--- FOV + Fast Switch dock
 local FIXED_GUN_LIST = {"M9", "Revolver", "Remington 870", "MP5", "M4A1", "M700", "AK-47"}
 
 local function buildFovDock()
@@ -1861,7 +1788,6 @@ local function buildFovDock()
 
     refreshGunList()
 
-    -- DEBOUNCED backpack events
     local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
     if bp then
         bp.ChildAdded:Connect(scheduleRefresh)
@@ -1909,7 +1835,7 @@ local function buildMain()
     makeSection(scroll, "NOCLIP PUNCH")
     makeToggle(scroll, "Noclip Punch", SilentAimSettings.NoclipPunchEnabled, function(s)
         SilentAimSettings.NoclipPunchEnabled = s
-    end, "Press F near a wall. 0.3s arm, 0.25s window.")
+    end, "Press F near a wall. 0.35s delay, auto-stops on exit.")
 
     makeSection(scroll, "FILTERS")
     makeToggle(scroll, "Team Check", SilentAimSettings.TeamCheck, function(s) SilentAimSettings.TeamCheck = s end)
@@ -2165,7 +2091,7 @@ local function buildInfo()
 
  Noclip Punch (Main):
   Toggle on, press F near a wall.
-  0.3s arm, 0.25s noclip window.
+  0.35s delay, auto-stops on exit.
 
  Autoshoot (Main):
   Independent toggle. Fires equipped
@@ -2281,7 +2207,6 @@ end
 
 buildFovDock()
 
--- open / close (instant — no tween cascade)
 local openState = "open"
 local function playOpen()
     if openState == "open" then return end
@@ -2338,7 +2263,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
--- FOV + mouse box updates: 30fps throttle via Heartbeat accumulator
 local drawAccum = 0
 local DRAW_TICK = 1 / 30
 Heartbeat:Connect(function(dt)
@@ -2375,7 +2299,6 @@ Heartbeat:Connect(function(dt)
     updateESP()
 end)
 
--- silent aim hooks (unchanged logic)
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Method = getnamecallmethod()
