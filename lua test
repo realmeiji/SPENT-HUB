@@ -2443,91 +2443,189 @@ compactBtn.MouseButton1Click:Connect(function()
     TweenService:Create(main, TweenInfo.new(0.28), {Size = target}):Play()
 end)
 
--- ESP
-local espDrawings = {}
+-- ESP (Highlight-based, optimized)
+local espData = {}
+local espLastUpdate = 0
+local ESP_UPDATE_INTERVAL = 0.05
+
 local function createESPDrawings()
     local d = {}
-    d.trace   = Drawing.new("Line")
-    d.hl      = Drawing.new("Square")
     d.name    = Drawing.new("Text")
     d.hpbar   = Drawing.new("Square")
     d.hpbarbg = Drawing.new("Square")
+    d.trace   = Drawing.new("Line")
     for _, v in pairs(d) do v.Visible = false; v.ZIndex = 10 end
-    d.hl.Thickness = 1; d.hl.Filled = false
     d.hpbarbg.Filled = true; d.hpbar.Filled = true
     d.hpbar.Thickness = 0; d.hpbarbg.Thickness = 0
     return d
 end
-local function clearESP(plr)
-    local d = espDrawings[plr]
-    if not d then return end
-    for _, v in pairs(d) do pcall(function() v.Visible = false; v:Remove() end) end
-    espDrawings[plr] = nil
+
+local function createESPHighlight()
+    local hl = Instance.new("Highlight")
+    hl.FillTransparency = 0.65
+    hl.OutlineTransparency = 0
+    hl.OutlineSize = 1
+    hl.DepthMode = Enum.HighlightDepthMode.Occluded
+    hl.Enabled = false
+    return hl
 end
-local function getPlayerESP(plr)
-    local d = espDrawings[plr]
-    if not d then d = createESPDrawings(); espDrawings[plr] = d end
+
+local function clearESP(plr)
+    local d = espData[plr]
+    if not d then return end
+    for _, v in pairs(d) do
+        if v.Remove then pcall(function() v:Remove() end) end
+        if v.Destroy then pcall(function() v:Destroy() end) end
+    end
+    espData[plr] = nil
+end
+
+local function getESP(plr)
+    local d = espData[plr]
+    if not d then
+        d = createESPDrawings()
+        d.hl = createESPHighlight()
+        espData[plr] = d
+    end
     return d
 end
-local function hideAll(d) for _, v in pairs(d) do v.Visible = false end end
+
+local function hideAll(d)
+    if d.hl then d.hl.Enabled = false end
+    for _, v in pairs(d) do
+        if v ~= d.hl and v.Visible ~= nil then v.Visible = false end
+    end
+end
+
 local function updateESP()
     if not SilentAimSettings.ESP_Enabled then
-        for _, d in pairs(espDrawings) do hideAll(d) end
+        for _, d in pairs(espData) do
+            if d.hl and d.hl.Enabled then d.hl.Enabled = false end
+            for _, v in pairs(d) do
+                if v ~= d.hl and v.Visible then v.Visible = false end
+            end
+        end
         return
     end
+
     local myC = LocalPlayer.Character
     local myR = myC and myC:FindFirstChild("HumanoidRootPart")
     local camPos = myR and myR.Position or Camera.CFrame.Position
     local vp = Camera.ViewportSize
+    local maxDist = SilentAimSettings.ESP_MaxDistance
+    local teamColors = SilentAimSettings.ESP_Team
+    local myTeam = LocalPlayer.Team
+
     for _, p in ipairs(Players:GetPlayers()) do
         if p == LocalPlayer then continue end
-        local d = espDrawings[p]
         local c = p.Character
         local h = c and c:FindFirstChildOfClass("Humanoid")
         local r = c and c:FindFirstChild("HumanoidRootPart")
-        local hd = c and c:FindFirstChild("Head")
-        if not c or not h or not r or h.Health <= 0 then if d then hideAll(d) end continue end
-        if SilentAimSettings.ESP_Team and p.Team == LocalPlayer.Team then if d then hideAll(d) end continue end
+
+        if not c or not h or not r or h.Health <= 0 then
+            local d = espData[p]
+            if d then hideAll(d) end
+            continue
+        end
+
+        if teamColors and p.Team == myTeam then
+            local d = espData[p]
+            if d then hideAll(d) end
+            continue
+        end
+
         local dist = (r.Position - camPos).Magnitude
-        if dist > SilentAimSettings.ESP_MaxDistance then if d then hideAll(d) end continue end
-        local hs, hon = getPositionOnScreen(hd and hd.Position or (r.Position + Vector3.new(0, 2.5, 0)))
+        if dist > maxDist then
+            local d = espData[p]
+            if d then hideAll(d) end
+            continue
+        end
+
+        local head = c:FindFirstChild("Head")
+        local hs, hon = getPositionOnScreen(head and head.Position or (r.Position + Vector3.new(0, 2.5, 0)))
         local fs, fon = getPositionOnScreen(r.Position - Vector3.new(0, 2.8, 0))
-        if not (hon and fon) then if d then hideAll(d) end continue end
-        if hs.X < -100 or hs.X > vp.X + 100 or hs.Y < -100 or hs.Y > vp.Y + 100 then if d then hideAll(d) end continue end
-        d = d or getPlayerESP(p)
+        if not (hon and fon) then
+            local d = espData[p]
+            if d then hideAll(d) end
+            continue
+        end
+        if hs.X < -100 or hs.X > vp.X + 100 or hs.Y < -100 or hs.Y > vp.Y + 100 then
+            local d = espData[p]
+            if d then hideAll(d) end
+            continue
+        end
+
+        local d = espData[p] or getESP(p)
+        d = espData[p]
+
+        if d.hl.Parent ~= c then
+            d.hl.Parent = c
+            d.hl.Adornee = c
+        end
+
+        if SilentAimSettings.ESP_Highlight then
+            local color = teamColors and getTeamColor(p) or SilentAimSettings.ESP_HighlightColor
+            d.hl.Enabled = true
+            d.hl.FillColor = color
+            d.hl.OutlineColor = color
+        else
+            d.hl.Enabled = false
+        end
+
         local bh = math.abs(hs.Y - fs.Y)
         local bw = bh * 0.55
         local bx = hs.X - bw / 2
         local by = hs.Y
-        local tc = getTeamColor(p)
-        d.hl.Visible = SilentAimSettings.ESP_Highlight
-        d.hl.Color = SilentAimSettings.ESP_Team and tc or SilentAimSettings.ESP_HighlightColor
-        d.hl.Position = Vector2.new(bx, by); d.hl.Size = Vector2.new(bw, bh)
-        d.name.Visible = SilentAimSettings.ESP_Name
-        d.name.Text = string.format("%s [%d]", p.Name, math.floor(dist))
-        d.name.Color = SilentAimSettings.ESP_NameColor; d.name.Size = 13
-        d.name.Center = true; d.name.Outline = true
-        d.name.Position = Vector2.new(hs.X, by - 18)
-        d.hpbarbg.Visible = SilentAimSettings.ESP_Health
-        d.hpbar.Visible = SilentAimSettings.ESP_Health
+
+        if SilentAimSettings.ESP_Name then
+            d.name.Visible = true
+            d.name.Text = string.format("%s [%d]", p.Name, math.floor(dist))
+            d.name.Color = SilentAimSettings.ESP_NameColor
+            d.name.Size = 13
+            d.name.Center = true
+            d.name.Outline = true
+            d.name.Position = Vector2.new(hs.X, by - 18)
+        else
+            d.name.Visible = false
+        end
+
         if SilentAimSettings.ESP_Health then
             local pct = math.clamp(h.Health / math.max(h.MaxHealth, 1), 0, 1)
-            local bwd = 3; local gap = 6
-            d.hpbarbg.Position = Vector2.new(bx - gap - bwd, by); d.hpbarbg.Size = Vector2.new(bwd, bh)
+            local bwd = 3
+            local gap = 6
+            d.hpbarbg.Visible = true
+            d.hpbarbg.Position = Vector2.new(bx - gap - bwd, by)
+            d.hpbarbg.Size = Vector2.new(bwd, bh)
             d.hpbarbg.Color = Color3.fromRGB(30, 30, 30)
-            d.hpbar.Position = Vector2.new(bx - gap - bwd, by + bh * (1 - pct)); d.hpbar.Size = Vector2.new(bwd, bh * pct)
+            d.hpbar.Visible = true
+            d.hpbar.Position = Vector2.new(bx - gap - bwd, by + bh * (1 - pct))
+            d.hpbar.Size = Vector2.new(bwd, bh * pct)
             d.hpbar.Color = SilentAimSettings.ESP_HPColor
+        else
+            d.hpbar.Visible = false
+            d.hpbarbg.Visible = false
         end
-        d.trace.Visible = SilentAimSettings.ESP_Trace
+
         if SilentAimSettings.ESP_Trace then
+            d.trace.Visible = true
             d.trace.From = Vector2.new(vp.X / 2, vp.Y)
             d.trace.To = Vector2.new(hs.X, hs.Y + bh / 2)
-            d.trace.Color = SilentAimSettings.ESP_Team and tc or SilentAimSettings.ESP_TraceColor
+            d.trace.Color = teamColors and getTeamColor(p) or SilentAimSettings.ESP_TraceColor
             d.trace.Thickness = 1
+        else
+            d.trace.Visible = false
         end
     end
-    for p, d in pairs(espDrawings) do if not p.Parent then clearESP(p) end end
+
+    for plr, d in pairs(espData) do
+        if not plr.Parent then clearESP(plr) end
+    end
 end
+
+Players.PlayerRemoving:Connect(function(plr)
+    task.wait(0.1)
+    clearESP(plr)
+end)
 
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
@@ -2590,7 +2688,12 @@ task.spawn(function()
         else
             fov_circle.Visible = false
         end
-        updateESP()
+
+        local now = tick()
+        if now - espLastUpdate >= ESP_UPDATE_INTERVAL then
+            espLastUpdate = now
+            updateESP()
+        end
     end)
 end)
 
