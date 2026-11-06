@@ -558,7 +558,7 @@ local function getBackpackGuns()
     return out
 end
 
--- NOCLIP (Precision Hub approach)
+-- NOCLIP (base + punch, Kayen version)
 pcall(function()
     local hook = newcclosure(function() end)
     for _, obj in next, getgc(false) do
@@ -571,85 +571,57 @@ pcall(function()
     end
 end)
 
-local noclipConnection = nil
+local noclipActive = false
+local wasInWall = false
+local noclipConn = nil
+
 local function noclipStep()
     local char = LocalPlayer.Character
     if not char then return end
     for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") and part.CanCollide then
+        if part:IsA("BasePart") then
             part.CanCollide = false
         end
     end
 end
-local function startNoclip()
-    if noclipConnection then return end
-    noclipConnection = RunService.Stepped:Connect(noclipStep)
+
+local function isInsideWall()
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    local params = OverlapParams.new()
+    params.FilterDescendantsInstances = {char}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    return #workspace:GetPartsInPart(hrp, params) > 0
 end
+
 local function stopNoclip()
-    if noclipConnection then
-        noclipConnection:Disconnect()
-        noclipConnection = nil
+    noclipActive = false
+    wasInWall = false
+    if noclipConn then
+        noclipConn:Disconnect()
+        noclipConn = nil
     end
 end
 
--- NOCLIP PUNCH (F key, 0.3s arm, 0.2s window)
-local punchBusy = false
+local function startNoclip()
+    if noclipActive then return end
+    noclipActive = true
+    wasInWall = false
+    noclipConn = RunService.Stepped:Connect(noclipStep)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not noclipActive then return end
+    if isInsideWall() then
+        wasInWall = true
+    elseif wasInWall then
+        stopNoclip()
+    end
+end)
+
 local function doNoclipPunch()
-    if punchBusy then return end
-    punchBusy = true
-    task.spawn(function()
-        local char = LocalPlayer.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        if not char or not root then punchBusy = false return end
-
-        -- proximity pre-check: don't start if not close to anything
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances = { char }
-        params.IgnoreWater = true
-        local dirs = {
-            Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
-            Vector3.new(0, 1, 0), Vector3.new(0, -1, 0),
-            Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
-        }
-        local near = false
-        for _, d in ipairs(dirs) do
-            if workspace:Raycast(root.Position, d.Unit * 3, params) then
-                near = true
-                break
-            end
-        end
-        if not near then
-            punchBusy = false
-            return
-        end
-
-        -- 0.3s arm
-        task.wait(0.3)
-
-        -- check again mid-arm
-        local stillNear = false
-        for _, d in ipairs(dirs) do
-            if workspace:Raycast(root.Position, d.Unit * 3, params) then
-                stillNear = true
-                break
-            end
-        end
-        if not stillNear then
-            punchBusy = false
-            return
-        end
-
-        -- 0.2s noclip window
-        noclipStep()
-        local conn
-        conn = RunService.Stepped:Connect(function()
-            noclipStep()
-        end)
-        task.wait(0.2)
-        conn:Disconnect()
-        punchBusy = false
-    end)
+    task.delay(0.35, startNoclip)
 end
 
 local function applySpeed(v)
@@ -1884,7 +1856,7 @@ local function buildMain()
     makeToggle(scroll, "Noclip Punch", SilentAimSettings.NoclipPunchEnabled, function(s)
         SilentAimSettings.NoclipPunchEnabled = s
         notify("Noclip Punch " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
-    end, "Press F near a wall to clip through. 0.3s arm, 0.2s window.")
+    end, "Press F near a wall to clip through. Auto-stops on exit.")
 
     makeSection(scroll, "FILTERS")
     makeToggle(scroll, "Team Check", SilentAimSettings.TeamCheck, function(s) SilentAimSettings.TeamCheck = s end)
@@ -2202,10 +2174,7 @@ local function buildInfo()
 
  Noclip Punch (Main tab):
   Toggle it on, then press F near a wall.
-  Waits 0.3s arming, then noclips for
-  0.2s. Fires once then disarms. Works
-  whether or not you're standing on the
-  wall.
+  Auto-stops the moment you are clear.
 
  Autoshoot (Main tab):
   Independent toggle. Fires the
@@ -2474,6 +2443,190 @@ compactBtn.MouseButton1Click:Connect(function()
     TweenService:Create(main, TweenInfo.new(0.28), {Size = target}):Play()
 end)
 
+-- ESP (Highlight-based, optimized)
+local espData = {}
+local espLastUpdate = 0
+local ESP_UPDATE_INTERVAL = 0.05
+
+local function createESPDrawings()
+    local d = {}
+    d.name    = Drawing.new("Text")
+    d.hpbar   = Drawing.new("Square")
+    d.hpbarbg = Drawing.new("Square")
+    d.trace   = Drawing.new("Line")
+    for _, v in pairs(d) do v.Visible = false; v.ZIndex = 10 end
+    d.hpbarbg.Filled = true; d.hpbar.Filled = true
+    d.hpbar.Thickness = 0; d.hpbarbg.Thickness = 0
+    return d
+end
+
+local function createESPHighlight()
+    local hl = Instance.new("Highlight")
+    hl.FillTransparency = 0.65
+    hl.OutlineTransparency = 0
+    hl.OutlineSize = 1
+    hl.DepthMode = Enum.HighlightDepthMode.Occluded
+    hl.Enabled = false
+    return hl
+end
+
+local function clearESP(plr)
+    local d = espData[plr]
+    if not d then return end
+    for _, v in pairs(d) do
+        if v.Remove then pcall(function() v:Remove() end) end
+        if v.Destroy then pcall(function() v:Destroy() end) end
+    end
+    espData[plr] = nil
+end
+
+local function getESP(plr)
+    local d = espData[plr]
+    if not d then
+        d = createESPDrawings()
+        d.hl = createESPHighlight()
+        espData[plr] = d
+    end
+    return d
+end
+
+local function hideAll(d)
+    if d.hl then d.hl.Enabled = false end
+    for _, v in pairs(d) do
+        if v ~= d.hl and v.Visible ~= nil then v.Visible = false end
+    end
+end
+
+local function updateESP()
+    if not SilentAimSettings.ESP_Enabled then
+        for _, d in pairs(espData) do
+            if d.hl and d.hl.Enabled then d.hl.Enabled = false end
+            for _, v in pairs(d) do
+                if v ~= d.hl and v.Visible then v.Visible = false end
+            end
+        end
+        return
+    end
+
+    local myC = LocalPlayer.Character
+    local myR = myC and myC:FindFirstChild("HumanoidRootPart")
+    local camPos = myR and myR.Position or Camera.CFrame.Position
+    local vp = Camera.ViewportSize
+    local maxDist = SilentAimSettings.ESP_MaxDistance
+    local teamColors = SilentAimSettings.ESP_Team
+    local myTeam = LocalPlayer.Team
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LocalPlayer then continue end
+        local c = p.Character
+        local h = c and c:FindFirstChildOfClass("Humanoid")
+        local r = c and c:FindFirstChild("HumanoidRootPart")
+
+        if not c or not h or not r or h.Health <= 0 then
+            local d = espData[p]
+            if d then hideAll(d) end
+            continue
+        end
+
+        if teamColors and p.Team == myTeam then
+            local d = espData[p]
+            if d then hideAll(d) end
+            continue
+        end
+
+        local dist = (r.Position - camPos).Magnitude
+        if dist > maxDist then
+            local d = espData[p]
+            if d then hideAll(d) end
+            continue
+        end
+
+        local head = c:FindFirstChild("Head")
+        local hs, hon = getPositionOnScreen(head and head.Position or (r.Position + Vector3.new(0, 2.5, 0)))
+        local fs, fon = getPositionOnScreen(r.Position - Vector3.new(0, 2.8, 0))
+        if not (hon and fon) then
+            local d = espData[p]
+            if d then hideAll(d) end
+            continue
+        end
+        if hs.X < -100 or hs.X > vp.X + 100 or hs.Y < -100 or hs.Y > vp.Y + 100 then
+            local d = espData[p]
+            if d then hideAll(d) end
+            continue
+        end
+
+        local d = espData[p] or getESP(p)
+        d = espData[p]
+
+        if d.hl.Parent ~= c then
+            d.hl.Parent = c
+            d.hl.Adornee = c
+        end
+
+        if SilentAimSettings.ESP_Highlight then
+            local color = teamColors and getTeamColor(p) or SilentAimSettings.ESP_HighlightColor
+            d.hl.Enabled = true
+            d.hl.FillColor = color
+            d.hl.OutlineColor = color
+        else
+            d.hl.Enabled = false
+        end
+
+        local bh = math.abs(hs.Y - fs.Y)
+        local bw = bh * 0.55
+        local bx = hs.X - bw / 2
+        local by = hs.Y
+
+        if SilentAimSettings.ESP_Name then
+            d.name.Visible = true
+            d.name.Text = string.format("%s [%d]", p.Name, math.floor(dist))
+            d.name.Color = SilentAimSettings.ESP_NameColor
+            d.name.Size = 13
+            d.name.Center = true
+            d.name.Outline = true
+            d.name.Position = Vector2.new(hs.X, by - 18)
+        else
+            d.name.Visible = false
+        end
+
+        if SilentAimSettings.ESP_Health then
+            local pct = math.clamp(h.Health / math.max(h.MaxHealth, 1), 0, 1)
+            local bwd = 3
+            local gap = 6
+            d.hpbarbg.Visible = true
+            d.hpbarbg.Position = Vector2.new(bx - gap - bwd, by)
+            d.hpbarbg.Size = Vector2.new(bwd, bh)
+            d.hpbarbg.Color = Color3.fromRGB(30, 30, 30)
+            d.hpbar.Visible = true
+            d.hpbar.Position = Vector2.new(bx - gap - bwd, by + bh * (1 - pct))
+            d.hpbar.Size = Vector2.new(bwd, bh * pct)
+            d.hpbar.Color = SilentAimSettings.ESP_HPColor
+        else
+            d.hpbar.Visible = false
+            d.hpbarbg.Visible = false
+        end
+
+        if SilentAimSettings.ESP_Trace then
+            d.trace.Visible = true
+            d.trace.From = Vector2.new(vp.X / 2, vp.Y)
+            d.trace.To = Vector2.new(hs.X, hs.Y + bh / 2)
+            d.trace.Color = teamColors and getTeamColor(p) or SilentAimSettings.ESP_TraceColor
+            d.trace.Thickness = 1
+        else
+            d.trace.Visible = false
+        end
+    end
+
+    for plr, d in pairs(espData) do
+        if not plr.Parent then clearESP(plr) end
+    end
+end
+
+Players.PlayerRemoving:Connect(function(plr)
+    task.wait(0.1)
+    clearESP(plr)
+end)
+
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.RightAlt then
@@ -2535,7 +2688,12 @@ task.spawn(function()
         else
             fov_circle.Visible = false
         end
-        updateESP()
+
+        local now = tick()
+        if now - espLastUpdate >= ESP_UPDATE_INTERVAL then
+            espLastUpdate = now
+            updateESP()
+        end
     end)
 end)
 
