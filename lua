@@ -470,9 +470,9 @@ local function performAutoShot(weapon)
             local shootSound = handle:FindFirstChild("ShootSound")
             if shootSound then
                 local cloned = shootSound:Clone()
-                cloned.Parent = handle
-                cloned:Play()
-                game:GetService("Debris"):AddItem(cloned, 5)
+                cloned.Parent = Camera
+                cloned.Playing = true
+                task.delay(5, function() pcall(function() cloned:Destroy() end) end)
             end
             local flare = handle:FindFirstChild("Flare")
             if flare then
