@@ -271,6 +271,11 @@ end
 
 local function getPositionOnScreen(Vector)
     local Vec3, OnScreen = WorldToScreen(Camera, Vector)
+    -- Vec3.Z is depth: negative means the point is behind the camera.
+    -- When behind camera, X/Y are mirrored and garbage — treat as off-screen.
+    if Vec3.Z < 0 then
+        return Vector2.new(), false
+    end
     return Vector2.new(Vec3.X, Vec3.Y), OnScreen
 end
 
@@ -638,7 +643,11 @@ local function startFastSwitch()
                 if not SilentAimSettings.FastSwitchEnabled then break end
                 local tool = backpack:FindFirstChild(weaponName) or char:FindFirstChild(weaponName)
                 if tool and tool:IsA("Tool") then
-                    pcall(function() humanoid:EquipTool(tool) end)
+                    -- FIX: EquipTool yields (network round-trip). Fire-and-forget with
+                    -- task.spawn so the loop never blocks, eliminating client-side lag spikes.
+                    task.spawn(function()
+                        pcall(function() humanoid:EquipTool(tool) end)
+                    end)
                 end
                 task.wait(SilentAimSettings.FastSwitchDelay)
             end
@@ -2651,10 +2660,26 @@ end
 
 hubToggleBtn.MouseButton1Click:Connect(function() playOpen() end)
 closeBtn.MouseButton1Click:Connect(function() playClose() end)
+
+-- FIX: Use an explicit state variable instead of reading Size.Y.Offset,
+-- which is unreliable after open/close animations reset the frame size.
+local isCompact = false
 compactBtn.MouseButton1Click:Connect(function()
-    local target = main.Size.Y.Offset > 50 and UDim2.new(0, UI.mainW, 0, isMobile and 32 or 40) or UDim2.new(0, UI.mainW, 0, UI.mainH)
-    TweenService:Create(main, TweenInfo.new(0.28), {Size = target}):Play()
+    isCompact = not isCompact
+    local targetH = isCompact and (isMobile and 32 or 40) or UI.mainH
+    TweenService:Create(main, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, UI.mainW, 0, targetH)
+    }):Play()
+    compactBtn.Text = isCompact and "+" or "-"
 end)
+
+-- Reset compact state when menu opens/closes so it's always consistent
+local _origPlayOpen = playOpen
+playOpen = function()
+    isCompact = false
+    compactBtn.Text = "-"
+    _origPlayOpen()
+end
 
 -- ============ BUG FIX: ESP SYSTEM - Rewritten ============
 -- Original ESP used Drawing objects but had broken positioning and 60hz update issues.
@@ -2784,25 +2809,40 @@ local function updateESPLogic()
         end
 
         -- Screen position check
+        -- We use WorldToViewportPoint (returns Vector3 where Z = depth).
+        -- Z < 0 means behind camera; skip entirely in that case.
         local headPos = head and head.Position or (r.Position + Vector3.new(0, 2.5, 0))
         local feetPos = r.Position - Vector3.new(0, 2.8, 0)
 
-        local hs, hon = getPositionOnScreen(headPos)
-        local fs, fon = getPositionOnScreen(feetPos)
+        local hVec3, hon = Camera:WorldToViewportPoint(headPos)
+        local fVec3, fon = Camera:WorldToViewportPoint(feetPos)
 
-        if not (hon or fon) then
+        -- Behind-camera guard: Z negative = mirrored garbage coords
+        if hVec3.Z <= 0 and fVec3.Z <= 0 then
             hideESPData(d)
             continue
         end
+
+        local hs = Vector2.new(hVec3.X, hVec3.Y)
+        local fs = Vector2.new(fVec3.X, fVec3.Y)
+
+        -- Use whichever point is in front of camera for culling
+        local refX = hVec3.Z > 0 and hs.X or fs.X
+        local refY = hVec3.Z > 0 and hs.Y or fs.Y
 
         -- Off-screen culling with generous padding
-        if hs.X < -150 or hs.X > vp.X + 150 or hs.Y < -150 or hs.Y > vp.Y + 150 then
+        if refX < -200 or refX > vp.X + 200 or refY < -200 or refY > vp.Y + 200 then
             hideESPData(d)
             continue
         end
 
-        local bh = math.max(math.abs(hs.Y - fs.Y), 10)
-        local bw = bh * 0.55
+        -- Height in pixels between head and feet screen positions.
+        -- Clamp to sensible minimum so nearby players don't get giant bars.
+        local bh = math.clamp(math.abs(hs.Y - fs.Y), 12, 400)
+        -- Top of bounding box is whichever Y is smaller (head is usually above feet)
+        local topY  = math.min(hs.Y, fs.Y)
+        local botY  = topY + bh
+        local midX  = hs.X  -- head X is a good horizontal center
 
         -- Highlight
         if d.hl.Parent ~= c then
@@ -2818,47 +2858,47 @@ local function updateESPLogic()
             d.hl.Enabled = false
         end
 
-        -- Name
+        -- Name: sits 4px above the top of the bounding box
         if SilentAimSettings.ESP_Name then
             d.name.Visible = true
             d.name.Text = string.format("%s [%d]", p.Name, math.floor(dist))
             d.name.Color = SilentAimSettings.ESP_NameColor
-            d.name.Size = math.clamp(13 - dist / 100, 8, 15)
-            d.name.Position = Vector2.new(hs.X, hs.Y - bh * 0.5 - 16)
+            d.name.Size = math.clamp(13 - dist / 120, 8, 14)
+            d.name.Position = Vector2.new(midX, topY - 16)
         else
             d.name.Visible = false
         end
 
-        -- Health bar
+        -- Health bar: sits 4px to the left of the bounding box
         if SilentAimSettings.ESP_Health then
             local pct = math.clamp(h.Health / math.max(h.MaxHealth, 1), 0, 1)
-            local bwd = math.max(3, bh * 0.07)
-            local gap = bwd + 3
-            local bx = hs.X - bw / 2 - gap - bwd
-            local by = hs.Y - bh * 0.5
+            local bwd = math.max(3, math.min(6, bh * 0.06))  -- bar width, proportional but capped
+            local bx  = midX - (bh * 0.275) - bwd - 4       -- left edge of bounding box minus gap
 
             d.hpbarbg.Visible = true
-            d.hpbarbg.Position = Vector2.new(bx, by)
+            d.hpbarbg.Position = Vector2.new(bx, topY)
             d.hpbarbg.Size = Vector2.new(bwd, bh)
             d.hpbarbg.Color = Color3.fromRGB(20, 20, 20)
 
+            -- Fill grows from bottom of bar upward
+            local fillH = bh * pct
             d.hpbar.Visible = true
-            d.hpbar.Position = Vector2.new(bx, by + bh * (1 - pct))
-            d.hpbar.Size = Vector2.new(bwd, bh * pct)
-            -- Color transitions: green > yellow > red
+            d.hpbar.Position = Vector2.new(bx, botY - fillH)
+            d.hpbar.Size = Vector2.new(bwd, fillH)
+            -- Green at full HP → yellow → red at 0
             local r2 = math.floor(255 * (1 - pct))
             local g2 = math.floor(255 * pct)
-            d.hpbar.Color = Color3.fromRGB(r2, g2, 50)
+            d.hpbar.Color = Color3.fromRGB(r2, g2, 40)
         else
             d.hpbar.Visible = false
             d.hpbarbg.Visible = false
         end
 
-        -- Trace
+        -- Trace line from screen bottom-center to player's feet
         if SilentAimSettings.ESP_Trace then
             d.trace.Visible = true
             d.trace.From = Vector2.new(vp.X / 2, vp.Y)
-            d.trace.To = Vector2.new(hs.X, hs.Y)
+            d.trace.To   = Vector2.new(midX, botY)
             d.trace.Color = teamColors and getTeamColor(p) or SilentAimSettings.ESP_TraceColor
         else
             d.trace.Visible = false
@@ -2946,12 +2986,44 @@ task.spawn(function()
     end)
 end)
 
--- ============ SILENT AIM HOOKS ============
+-- ============ SILENT AIM + PRESERVE SOUNDS HOOKS ============
+-- IMPORTANT: Both PreserveSounds and SilentAim need __namecall.
+-- We merge them into ONE hookmetamethod call — two separate calls would
+-- conflict (the second hook overwrites the first, breaking whichever ran first).
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Method = getnamecallmethod()
     local Args = {...}
     local self = Args[1]
+
+    -- ---- PRESERVE SOUNDS ----
+    -- When a gun's sound plays, clone it to Camera so it's heard locally
+    -- even during fast switch / autoshoot (tool gets unequipped mid-sound).
+    -- Autoshoot already clones ShootSound manually in performAutoShot,
+    -- so this catches all other gun sounds (reload, empty click, etc).
+    if Method == "Play" and not checkcaller() then
+        local ok, isSoundClass = pcall(function() return self.ClassName == "Sound" end)
+        if ok and isSoundClass then
+            local tool = self.Parent and self.Parent.Parent
+            local localChar = LocalPlayer.Character
+            if localChar
+                and tool
+                and tool.Parent == localChar
+                and tool.ClassName == "Tool"
+                and tool:GetAttribute("ToolType") == "Gun"
+            then
+                pcall(function()
+                    local soundClone = self:Clone()
+                    soundClone.Parent = Camera
+                    soundClone.Playing = true
+                    task.delay(5, function() pcall(function() soundClone:Destroy() end) end)
+                end)
+                return  -- let original also play (don't swallow it)
+            end
+        end
+    end
+
+    -- ---- SILENT AIM ----
     local chance = CalculateChance(SilentAimSettings.HitChance)
     if SilentAimSettings.Enabled and self == workspace and not checkcaller() and chance == true and not AutoShootRaycastInProgress then
         if Method == "FindPartOnRayWithIgnoreList" and SilentAimSettings.SilentAimMethod == Method then
