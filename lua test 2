@@ -8,7 +8,6 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
--- startup
 local startupGui = Instance.new("ScreenGui")
 startupGui.Name = "SpentHubStartup"
 startupGui.ResetOnSpawn = false
@@ -82,135 +81,71 @@ TweenService:Create(startupStroke, TweenInfo.new(0.35), {Transparency = 1}):Play
 task.wait(0.4)
 pcall(function() startupGui:Destroy() end)
 
--- ============ DEVICE DETECTION ============
 local IS_MOBILE = UserInputService and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
--- ============ RESPONSIVE MENU DIMENSIONS ============
 local function getMenuDimensions()
     local vp = workspace.CurrentCamera.ViewportSize
     local sw, sh = vp.X, vp.Y
-
     if IS_MOBILE or sw < 700 then
         local scale = math.clamp(sw / 900, 0.45, 0.75)
         return {
-            mainW = math.floor(sw * 0.96),
-            mainH = math.floor(sh * 0.80),
-            mainX = math.floor(sw * 0.02),
-            mainY = math.floor(sh * 0.08),
-            sidebarW = math.floor(100 * scale),
-            contentX = math.floor(110 * scale),
-            contentW_offset = math.floor(-220 * scale - 10),
-            rightDockW = math.floor(160 * scale),
-            titleH = 36,
-            statusH = 20,
-            fontSize_body = 10,
-            fontSize_header = 11,
-            isMobile = true,
-        }
-    else
-        return {
-            mainW = 890,
-            mainH = 440,
-            mainX = -445,
-            mainY = -220,
-            sidebarW = 150,
-            contentX = 176,
-            contentW_offset = -388,
-            rightDockW = 200,
-            titleH = 40,
-            statusH = 24,
-            fontSize_body = 11,
-            fontSize_header = 12,
-            isMobile = false,
+            mainW = math.floor(sw * 0.96), mainH = math.floor(sh * 0.80),
+            mainX = math.floor(sw * 0.02), mainY = math.floor(sh * 0.08),
+            sidebarW = math.floor(100 * scale), contentX = math.floor(110 * scale),
+            contentW_offset = math.floor(-220 * scale - 10), rightDockW = math.floor(160 * scale),
+            titleH = 36, statusH = 20, fontSize_body = 10, fontSize_header = 11, isMobile = true,
         }
     end
+    return {
+        mainW = 890, mainH = 440, mainX = -445, mainY = -220,
+        sidebarW = 150, contentX = 176, contentW_offset = -388, rightDockW = 200,
+        titleH = 40, statusH = 24, fontSize_body = 11, fontSize_header = 12, isMobile = false,
+    }
 end
 
 local DIM = getMenuDimensions()
 
--- settings
 local SilentAimSettings = {
-    Enabled = false,
-    TeamCheck = false,
-    VisibleCheck = false,
-    TargetPart = "HumanoidRootPart",
-    SilentAimMethod = "Raycast",
-    FOVRadius = 130,
-    FOVVisible = false,
-    FOVCenter = false,
-    ShowSilentAimTarget = false,
-    MouseHitPrediction = false,
-    MouseHitPredictionAmount = 0.165,
-    HitChance = 100,
-    TargetCop = true,
-    TargetInmate = true,
-    TargetCriminal = true,
-    ForcefieldCheck = true,
-    TargetingMode = "Manual",
-    ESP_Enabled = false,
-    ESP_Team = false,
-    ESP_Highlight = true,
-    ESP_Name = true,
-    ESP_Health = true,
-    ESP_Trace = false,
-    ESP_MaxDistance = 1500,
+    Enabled = false, TeamCheck = false, VisibleCheck = false,
+    TargetPart = "HumanoidRootPart", SilentAimMethod = "Raycast",
+    FOVRadius = 130, FOVVisible = false, FOVCenter = false,
+    ShowSilentAimTarget = false, MouseHitPrediction = false, MouseHitPredictionAmount = 0.165,
+    HitChance = 100, TargetCop = true, TargetInmate = true, TargetCriminal = true,
+    ForcefieldCheck = true, TargetingMode = "Manual",
+    ESP_Enabled = false, ESP_Team = false, ESP_Highlight = true, ESP_Name = true,
+    ESP_Health = true, ESP_Trace = false, ESP_MaxDistance = 1500,
     ESP_HighlightColor = Color3.fromRGB(255, 182, 193),
     ESP_NameColor = Color3.fromRGB(255, 255, 255),
     ESP_HPColor = Color3.fromRGB(80, 255, 100),
     ESP_TraceColor = Color3.fromRGB(255, 255, 255),
-    AutoshootEnabled = false,
-    NoclipEnabled = false,
-    SpeedValue = 16,
-    JumpPowerValue = 50,
-    InvisibleEnabled = false,
-    KorbloxEnabled = false,
-    HeadlessEnabled = false,
-    FastSwitchEnabled = false,
-    FastSwitchDelay = 0.05,
+    AutoshootEnabled = false, NoclipEnabled = false,
+    SpeedValue = 16, JumpPowerValue = 50,
+    InvisibleEnabled = false, KorbloxEnabled = false, HeadlessEnabled = false,
+    FastSwitchEnabled = false, FastSwitchDelay = 0.05,
     FastSwitchList = {"M9", "Revolver", "Remington 870", "MP5", "M4A1", "M700", "AK-47"},
-    FastSwitchHotkey = Enum.KeyCode.H,
-    NoclipPunchEnabled = false,
+    FastSwitchHotkey = Enum.KeyCode.H, NoclipPunchEnabled = false,
 }
 getgenv().SilentAimSettings = SilentAimSettings
 
 local Whitelist = {}
 getgenv().SilentAimWhitelist = Whitelist
-
-local function isWhitelisted(plr)
-    if not plr then return false end
-    return Whitelist[string.lower(plr.Name)] == true
-end
-local function addWhitelist(name)
-    if not name or name == "" then return false end
-    Whitelist[string.lower(name)] = true
-    return true
-end
-local function removeWhitelist(name)
-    if not name then return false end
-    Whitelist[string.lower(name)] = nil
-    return true
-end
+local function isWhitelisted(plr) if not plr then return false end return Whitelist[string.lower(plr.Name)] == true end
+local function addWhitelist(name) if not name or name == "" then return false end Whitelist[string.lower(name)] = true return true end
+local function removeWhitelist(name) if not name then return false end Whitelist[string.lower(name)] = nil return true end
 
 local TARGET_LOCK_COLOR = Color3.fromRGB(255, 182, 193)
 local RING_IDLE_COLOR = Color3.fromRGB(200, 200, 220)
 
 local Theme = {
-    ACCENT = Color3.fromRGB(255, 182, 193),
-    ACCENT_LIGHT = Color3.fromRGB(255, 200, 220),
+    ACCENT = Color3.fromRGB(255, 182, 193), ACCENT_LIGHT = Color3.fromRGB(255, 200, 220),
     ACCENT_DARK = Color3.fromRGB(240, 150, 180),
-    BG_MAIN = Color3.fromRGB(12, 12, 16),
-    BG_PANEL = Color3.fromRGB(18, 18, 24),
-    BG_OPT = Color3.fromRGB(28, 28, 36),
-    BG_HOVER = Color3.fromRGB(38, 38, 48),
+    BG_MAIN = Color3.fromRGB(12, 12, 16), BG_PANEL = Color3.fromRGB(18, 18, 24),
+    BG_OPT = Color3.fromRGB(28, 28, 36), BG_HOVER = Color3.fromRGB(38, 38, 48),
     BG_ACTIVE = Color3.fromRGB(48, 48, 60),
-    BORDER = Color3.fromRGB(50, 50, 65),
-    BORDER_STRONG = Color3.fromRGB(70, 70, 90),
-    TEXT = Color3.fromRGB(235, 235, 245),
-    TEXT_DIM = Color3.fromRGB(150, 150, 160),
-    TEXT_STRONG = Color3.fromRGB(255, 255, 255),
-    TEXT_MUTED = Color3.fromRGB(120, 120, 130),
-    GRADIENT_1 = Color3.fromRGB(255, 182, 193),
-    GRADIENT_2 = Color3.fromRGB(220, 160, 200),
+    BORDER = Color3.fromRGB(50, 50, 65), BORDER_STRONG = Color3.fromRGB(70, 70, 90),
+    TEXT = Color3.fromRGB(235, 235, 245), TEXT_DIM = Color3.fromRGB(150, 150, 160),
+    TEXT_STRONG = Color3.fromRGB(255, 255, 255), TEXT_MUTED = Color3.fromRGB(120, 120, 130),
+    GRADIENT_1 = Color3.fromRGB(255, 182, 193), GRADIENT_2 = Color3.fromRGB(220, 160, 200),
     ICON = "S",
 }
 
@@ -266,9 +201,7 @@ end
 
 local function getPositionOnScreen(Vector)
     local Vec3, OnScreen = WorldToScreen(Camera, Vector)
-    if Vec3.Z < 0 then
-        return Vector2.new(), false
-    end
+    if Vec3.Z < 0 then return Vector2.new(), false end
     return Vector2.new(Vec3.X, Vec3.Y), OnScreen
 end
 
@@ -281,23 +214,15 @@ local function ValidateArguments(Args, RayMethod)
     return n >= RayMethod.ArgCountRequired
 end
 
-local function getDirection(Origin, Position)
-    return (Position - Origin).Unit * 1000
-end
-
+local function getDirection(Origin, Position) return (Position - Origin).Unit * 1000 end
 local function getCenter()
     local vp = Camera.ViewportSize
     return Vector2.new(vp.X / 2, vp.Y / 2)
 end
-
 local function getCursorPos()
-    if IS_MOBILE then
-        local vp = Camera.ViewportSize
-        return Vector2.new(vp.X / 2, vp.Y / 2)
-    end
+    if IS_MOBILE then local vp = Camera.ViewportSize return Vector2.new(vp.X / 2, vp.Y / 2) end
     return GetMouseLocation(UserInputService)
 end
-
 local function getAimOrigin()
     if SilentAimSettings.FOVCenter then return getCenter() end
     return getCursorPos()
@@ -329,11 +254,8 @@ local function matchesTargetingMode(Player)
         if teamName == "Inmates" then
             local char = Player.Character
             if not char then return false end
-            if mode == "Hostile" then
-                return char:GetAttribute("Hostile") == true
-            elseif mode == "Trespassing" then
-                return char:GetAttribute("Trespassing") == true
-            end
+            if mode == "Hostile" then return char:GetAttribute("Hostile") == true
+            elseif mode == "Trespassing" then return char:GetAttribute("Trespassing") == true end
         end
     end
     return mode == "Manual"
@@ -379,7 +301,7 @@ local function getClosestPlayer()
         if SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player) then continue end
         local HumanoidRootPart = FindFirstChild(Character, "HumanoidRootPart")
         local Humanoid = FindFirstChild(Character, "Humanoid")
-        if not HumanoidRootPart or not Humanoid or (Humanoid and Humanoid.Health <= 0) then continue end
+        if not HumanoidRootPart or not Humanoid or Humanoid.Health <= 0 then continue end
         local ScreenPosition, OnScreen = getPositionOnScreen(HumanoidRootPart.Position)
         if not OnScreen then continue end
         local Distance = (origin - ScreenPosition).Magnitude
@@ -400,29 +322,20 @@ end
 
 task.spawn(function()
     while task.wait(0.1) do
-        if SilentAimSettings.Enabled then
-            currentTarget = getClosestPlayer()
-        else
-            currentTarget = nil
-        end
+        if SilentAimSettings.Enabled then currentTarget = getClosestPlayer() else currentTarget = nil end
     end
 end)
 
--- autoshoot plumbing
 local shootRemote = nil
 local AutoShootGunTracers = nil
 pcall(function()
     local gunRemotes = ReplicatedStorage:WaitForChild("GunRemotes", 5)
-    if gunRemotes then
-        shootRemote = gunRemotes:WaitForChild("ShootEvent", 5)
-    end
+    if gunRemotes then shootRemote = gunRemotes:WaitForChild("ShootEvent", 5) end
 end)
 pcall(function()
     local sharedModules = ReplicatedStorage:WaitForChild("SharedModules", 5)
     local tracersModule = sharedModules and sharedModules:WaitForChild("GunTracers", 5)
-    if tracersModule then
-        AutoShootGunTracers = require(tracersModule)
-    end
+    if tracersModule then AutoShootGunTracers = require(tracersModule) end
 end)
 
 local function getEquippedWeapon()
@@ -486,9 +399,7 @@ end
 local function castPelletRayAutoShoot(weapon, origin, aimPoint, spreadRadius)
     local roll = math.random()
     local behavior = weapon:GetAttribute("Behavior")
-    if behavior == "Sniper" or behavior == "Shotgun" then
-        roll = math.sqrt(roll)
-    end
+    if behavior == "Sniper" or behavior == "Shotgun" then roll = math.sqrt(roll) end
     local range = weapon:GetAttribute("Range") or 1000
     local lookCFrame = CFrame.new(origin, aimPoint)
     local rollAngle = 360 - 720 * math.random()
@@ -527,13 +438,9 @@ local function performAutoShot(weapon)
         table.insert(bulletData, { origin, hitPosition, hitInstance })
         if AutoShootGunTracers then
             pcall(function()
-                if behavior == "Sniper" then
-                    AutoShootGunTracers.createSniper(muzzlePos, hitPosition)
-                elseif behavior == "Taser" then
-                    AutoShootGunTracers.createTaser(muzzlePos, hitPosition)
-                else
-                    AutoShootGunTracers.createBullet(muzzlePos, hitPosition)
-                end
+                if behavior == "Sniper" then AutoShootGunTracers.createSniper(muzzlePos, hitPosition)
+                elseif behavior == "Taser" then AutoShootGunTracers.createTaser(muzzlePos, hitPosition)
+                else AutoShootGunTracers.createBullet(muzzlePos, hitPosition) end
             end)
         end
     end
@@ -554,9 +461,7 @@ local function performAutoShot(weapon)
             local flare = handle:FindFirstChild("Flare")
             if flare then
                 flare.Enabled = true
-                task.delay(0.05, function()
-                    if flare then flare.Enabled = false end
-                end)
+                task.delay(0.05, function() if flare then flare.Enabled = false end end)
             end
         end
     end)
@@ -582,13 +487,9 @@ RunService.Heartbeat:Connect(function()
     performAutoShot(weapon)
 end)
 
--- ============ FAST SWITCH — FIX: fire-and-forget EquipTool to prevent lag spikes ============
 local fastSwitchConnection = nil
 local function stopFastSwitch()
-    if fastSwitchConnection then
-        pcall(function() task.cancel(fastSwitchConnection) end)
-        fastSwitchConnection = nil
-    end
+    if fastSwitchConnection then pcall(function() task.cancel(fastSwitchConnection) end) fastSwitchConnection = nil end
 end
 
 local function startFastSwitch()
@@ -597,32 +498,18 @@ local function startFastSwitch()
         while SilentAimSettings.FastSwitchEnabled do
             local char = LocalPlayer.Character
             local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-            if not char or not humanoid or humanoid.Health <= 0 then
-                task.wait(0.1)
-                continue
-            end
+            if not char or not humanoid or humanoid.Health <= 0 then task.wait(0.1) continue end
             local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
-            if not backpack then
-                task.wait(0.1)
-                continue
-            end
+            if not backpack then task.wait(0.1) continue end
             local list = SilentAimSettings.FastSwitchList
-            if not list or #list == 0 then
-                task.wait(0.1)
-                continue
-            end
+            if not list or #list == 0 then task.wait(0.1) continue end
             for _, weaponName in ipairs(list) do
                 if not SilentAimSettings.FastSwitchEnabled then break end
                 local tool = backpack:FindFirstChild(weaponName) or char:FindFirstChild(weaponName)
                 if tool and tool:IsA("Tool") then
-                    -- FIX: EquipTool yields on network round-trip.
-                    -- Fire-and-forget with task.spawn so the loop never blocks,
-                    -- eliminating client-side lag spikes.
                     local h = humanoid
                     local t = tool
-                    task.spawn(function()
-                        pcall(function() h:EquipTool(t) end)
-                    end)
+                    task.spawn(function() pcall(function() h:EquipTool(t) end) end)
                 end
                 task.wait(SilentAimSettings.FastSwitchDelay)
             end
@@ -635,14 +522,11 @@ local function getBackpackGuns()
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
     if not backpack then return out end
     for _, t in ipairs(backpack:GetChildren()) do
-        if t:IsA("Tool") then
-            table.insert(out, t.Name)
-        end
+        if t:IsA("Tool") then table.insert(out, t.Name) end
     end
     return out
 end
 
--- ============ NOCLIP ============
 pcall(function()
     local hook = newcclosure(function() end)
     for _, obj in next, getgc(false) do
@@ -657,31 +541,23 @@ end)
 
 local noclipActive = false
 local noclipConn = nil
-
 local function noclipStep()
     if not noclipActive then return end
     local char = LocalPlayer.Character
     if not char then return end
     for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") and part.CanCollide then
-            part.CanCollide = false
-        end
+        if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
     end
 end
-
 local function stopNoclip()
     noclipActive = false
-    if noclipConn then
-        noclipConn:Disconnect()
-        noclipConn = nil
-    end
+    if noclipConn then noclipConn:Disconnect() noclipConn = nil end
     local char = LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if hrp then hrp.CanCollide = false end
     end
 end
-
 local function startNoclip()
     if noclipActive then return end
     noclipActive = true
@@ -690,15 +566,10 @@ end
 
 local noclipPunchActive = false
 local noclipPunchConn = nil
-
 local function stopNoclipPunch()
     noclipPunchActive = false
-    if noclipPunchConn then
-        noclipPunchConn:Disconnect()
-        noclipPunchConn = nil
-    end
+    if noclipPunchConn then noclipPunchConn:Disconnect() noclipPunchConn = nil end
 end
-
 local function startNoclipPunch()
     if noclipPunchActive then return end
     noclipPunchActive = true
@@ -707,33 +578,22 @@ local function startNoclipPunch()
         local char = LocalPlayer.Character
         if not char then stopNoclipPunch() return end
         for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") and part.CanCollide then
-                part.CanCollide = false
-            end
+            if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
         end
     end)
-    task.delay(1.2, function()
-        stopNoclipPunch()
-    end)
+    task.delay(1.2, function() stopNoclipPunch() end)
 end
-
-local function doNoclipPunch()
-    task.delay(0.35, startNoclipPunch)
-end
+local function doNoclipPunch() task.delay(0.35, startNoclipPunch) end
 
 local function applySpeed(v)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then hum.WalkSpeed = v end
 end
-
 local function applyJumpPower(v)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum.UseJumpPower = true
-        hum.JumpPower = v
-    end
+    if hum then hum.UseJumpPower = true hum.JumpPower = v end
 end
 
 local InvisibleRealCFrame = nil
@@ -754,19 +614,13 @@ local function loadInvisibleAnimation(character)
     track.Priority = Enum.AnimationPriority.Action4
     track:Play(0, 0.001, 0)
     animation:Destroy()
-    task.delay(0, function()
-        track.TimePosition = isR15 and 1.95 or 0.4
-    end)
+    task.delay(0, function() track.TimePosition = isR15 and 1.95 or 0.4 end)
     return track
 end
 
 local function stopInvisible()
     pcall(function() RunService:UnbindFromRenderStep(InvisibleRenderKey) end)
-    if InvisibleAnimationTrack then
-        InvisibleAnimationTrack:Stop()
-        InvisibleAnimationTrack:Destroy()
-        InvisibleAnimationTrack = nil
-    end
+    if InvisibleAnimationTrack then InvisibleAnimationTrack:Stop() InvisibleAnimationTrack:Destroy() InvisibleAnimationTrack = nil end
     local character = LocalPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
     if rootPart and InvisibleRealCFrame then
@@ -778,12 +632,8 @@ local function stopInvisible()
     if character then
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") and part ~= rootPart then
-                if InvisibleOriginalTransparency[part] ~= nil then
-                    part.Transparency = InvisibleOriginalTransparency[part]
-                end
-                if InvisibleOriginalCanCollide[part] ~= nil then
-                    part.CanCollide = InvisibleOriginalCanCollide[part]
-                end
+                if InvisibleOriginalTransparency[part] ~= nil then part.Transparency = InvisibleOriginalTransparency[part] end
+                if InvisibleOriginalCanCollide[part] ~= nil then part.CanCollide = InvisibleOriginalCanCollide[part] end
             end
         end
         if rootPart then rootPart.Transparency = 0 end
@@ -815,9 +665,7 @@ local function startInvisible()
     RunService:BindToRenderStep(InvisibleRenderKey, Enum.RenderPriority.Camera.Value - 1, function()
         if SilentAimSettings.InvisibleEnabled and InvisibleRealCFrame and rootPart.Parent then
             rootPart.CFrame = InvisibleRealCFrame
-            if InvisibleAnimationTrack then
-                InvisibleAnimationTrack:AdjustWeight(0.001)
-            end
+            if InvisibleAnimationTrack then InvisibleAnimationTrack:AdjustWeight(0.001) end
         end
     end)
 end
@@ -834,14 +682,11 @@ RunService.Heartbeat:Connect(function()
     rootPart.CFrame = (rootPart.CFrame - Vector3.new(0, dropOffset, 0)) * CFrame.Angles(math.rad(isR15 and 180 or 90), 0, 0)
     local currentVelocity = rootPart.AssemblyLinearVelocity
     rootPart.AssemblyLinearVelocity = Vector3.new(currentVelocity.X, 0, currentVelocity.Z)
-    if InvisibleAnimationTrack then
-        InvisibleAnimationTrack:AdjustWeight(100)
-    end
+    if InvisibleAnimationTrack then InvisibleAnimationTrack:AdjustWeight(100) end
 end)
 
 local KorbloxMeshId = "rbxassetid://101851696"
 local KorbloxTextureId = "rbxassetid://101851254"
-
 local function applyKorblox(character)
     local rightLeg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightUpperLeg")
     if not rightLeg then return end
@@ -857,7 +702,6 @@ local function applyKorblox(character)
 end
 
 local HeadlessMeshId = "rbxassetid://1095708"
-
 local function applyHeadless(character)
     local head = character:FindFirstChild("Head")
     if not head then return end
@@ -887,7 +731,6 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     if SilentAimSettings.FastSwitchEnabled then startFastSwitch() end
 end)
 
--- ============ GUI ============
 local gui = Instance.new("ScreenGui")
 gui.Name = "SpentHub"
 gui.ResetOnSpawn = false
@@ -899,46 +742,25 @@ gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 local function buildMenuFrames()
     for _, c in ipairs(gui:GetChildren()) do
         if c.Name ~= "SpentHubNotif" and c.Name ~= "SpentHubToggle" then
-            if c:IsA("Frame") or c:IsA("ScreenGui") then
-                pcall(function() c:Destroy() end)
-            end
+            if c:IsA("Frame") or c:IsA("ScreenGui") then pcall(function() c:Destroy() end) end
         end
     end
 
     local vp = Camera.ViewportSize
     local sw, sh = vp.X, vp.Y
     local isMobile = IS_MOBILE or sw < 700
-
-    local mainW, mainH, mainPosX, mainPosY
-    local sideW, contX, contWOff, rightW
-    local titleH, statusH, fBody, fHead
+    local mainW, mainH, mainPosX, mainPosY, sideW, contX, contWOff, rightW, titleH, statusH, fBody, fHead
 
     if isMobile then
         mainW = math.floor(math.min(sw * 0.98, 540))
         mainH = math.floor(math.min(sh * 0.82, 400))
-        mainPosX = -(mainW / 2)
-        mainPosY = -(mainH / 2)
-        sideW = 90
-        contX = 100
-        contWOff = -270
-        rightW = 150
-        titleH = 32
-        statusH = 18
-        fBody = 9
-        fHead = 10
+        mainPosX = -(mainW / 2); mainPosY = -(mainH / 2)
+        sideW = 90; contX = 100; contWOff = -270; rightW = 150
+        titleH = 32; statusH = 18; fBody = 9; fHead = 10
     else
-        mainW = 890
-        mainH = 440
-        mainPosX = -445
-        mainPosY = -220
-        sideW = 150
-        contX = 176
-        contWOff = -388
-        rightW = 200
-        titleH = 40
-        statusH = 24
-        fBody = 11
-        fHead = 12
+        mainW = 890; mainH = 440; mainPosX = -445; mainPosY = -220
+        sideW = 150; contX = 176; contWOff = -388; rightW = 200
+        titleH = 40; statusH = 24; fBody = 11; fHead = 12
     end
 
     local bgBlur = Instance.new("Frame", gui)
@@ -1091,13 +913,11 @@ local function buildMenuFrames()
         btn.AutoButtonColor = false
         btn.ZIndex = 103
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0.35, 0)
-
         local btnGlow = Instance.new("UIStroke", btn)
         btnGlow.Color = Theme.ACCENT
         btnGlow.Thickness = 2
         btnGlow.Transparency = 1
         Instance.new("UICorner", btnGlow).CornerRadius = UDim.new(0.35, 0)
-
         btn.MouseButton1Click:Connect(function() createRipple(btn, UDim2.new(0.5, 0, 0.5, 0)) end)
         btn.MouseEnter:Connect(function()
             TweenService:Create(btn, TweenInfo.new(0.18), {BackgroundColor3 = Theme.BG_HOVER, TextColor3 = Theme.ACCENT}):Play()
@@ -1110,8 +930,8 @@ local function buildMenuFrames()
         return btn, btnGlow
     end
 
-    local compactBtn, _ = makeTitleBtn("-", isMobile and -56 or -90)
-    local closeBtn, _ = makeTitleBtn("x", isMobile and -28 or -58)
+    local compactBtn = makeTitleBtn("-", isMobile and -56 or -90)
+    local closeBtn = makeTitleBtn("x", isMobile and -28 or -58)
 
     local statusStrip = Instance.new("Frame", main)
     statusStrip.Name = "statusStrip"
@@ -1145,7 +965,6 @@ local function buildMenuFrames()
     sidebar.BorderSizePixel = 0
     sidebar.ZIndex = 101
     Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0.05, 0)
-
     local sidebarStroke = Instance.new("UIStroke", sidebar)
     sidebarStroke.Color = Theme.BORDER
     sidebarStroke.Thickness = 0.5
@@ -1188,7 +1007,6 @@ local function buildMenuFrames()
     content.BorderSizePixel = 0
     content.ZIndex = 101
     Instance.new("UICorner", content).CornerRadius = UDim.new(0.035, 0)
-
     local contentStroke = Instance.new("UIStroke", content)
     contentStroke.Color = Theme.BORDER
     contentStroke.Thickness = 0.5
@@ -1202,7 +1020,6 @@ local function buildMenuFrames()
     accentLine.BorderSizePixel = 0
     accentLine.ZIndex = 102
     Instance.new("UICorner", accentLine).CornerRadius = UDim.new(1, 0)
-
     local accentGlow = Instance.new("UIStroke", accentLine)
     accentGlow.Color = Theme.ACCENT
     accentGlow.Thickness = 3
@@ -1248,7 +1065,6 @@ local function buildMenuFrames()
     rightDock.BorderSizePixel = 0
     rightDock.ZIndex = 101
     Instance.new("UICorner", rightDock).CornerRadius = UDim.new(0.035, 0)
-
     local rightStroke = Instance.new("UIStroke", rightDock)
     rightStroke.Color = Theme.BORDER
     rightStroke.Thickness = 0.5
@@ -1288,18 +1104,15 @@ local function buildMenuFrames()
     return {
         main = main, shadow = shadow, bgBlur = bgBlur,
         titleBar = titleBar, icon = icon, title = title, drag = drag,
-        compactBtn = compactBtn, closeBtn = closeBtn,
-        statusLabel = statusLabel,
+        compactBtn = compactBtn, closeBtn = closeBtn, statusLabel = statusLabel,
         sidebar = sidebar, sidebarLayout = sidebarLayout,
-        content = content, contentHeader = contentHeader,
-        accentLine = accentLine,
+        content = content, contentHeader = contentHeader, accentLine = accentLine,
         scroll = scroll, scrollLayout = scrollLayout,
         rightDock = rightDock, rightHeader = rightHeader,
         rightScroll = rightScroll, rightLayout = rightLayout,
         mainGlow = mainGlow, mainStroke = mainStroke,
         mainW = mainW, mainH = mainH, mainPosX = mainPosX, mainPosY = mainPosY,
-        isMobile = isMobile, fBody = fBody, fHead = fHead,
-        createRipple = createRipple,
+        isMobile = isMobile, fBody = fBody, fHead = fHead, createRipple = createRipple,
     }
 end
 
@@ -1404,7 +1217,6 @@ local function notify(text, color)
         wrap.Size = UDim2.new(1, 0, 0, 44)
         wrap.BackgroundTransparency = 1
         wrap.ZIndex = 501
-
         local card = Instance.new("Frame", wrap)
         card.Size = UDim2.new(1, 0, 1, 0)
         card.BackgroundColor3 = Theme.BG_OPT
@@ -1412,12 +1224,10 @@ local function notify(text, color)
         card.BorderSizePixel = 0
         card.ZIndex = 502
         Instance.new("UICorner", card).CornerRadius = UDim.new(0.16, 0)
-
         local stroke = Instance.new("UIStroke", card)
         stroke.Color = color
         stroke.Thickness = 1
         stroke.Transparency = 0.4
-
         local bar = Instance.new("Frame", card)
         bar.Size = UDim2.new(0, 3.5, 1, -10)
         bar.Position = UDim2.new(0, 5, 0, 5)
@@ -1425,7 +1235,6 @@ local function notify(text, color)
         bar.BorderSizePixel = 0
         bar.ZIndex = 503
         Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-
         local lbl = Instance.new("TextLabel", card)
         lbl.Size = UDim2.new(1, -18, 1, -8)
         lbl.Position = UDim2.new(0, 14, 0, 0)
@@ -1437,17 +1246,14 @@ local function notify(text, color)
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.TextYAlignment = Enum.TextYAlignment.Center
         lbl.ZIndex = 503
-
         wrap.Position = UDim2.new(1.2, 0, 0, 0)
         card.BackgroundTransparency = 1
         lbl.TextTransparency = 1
         bar.BackgroundTransparency = 1
-
         TweenService:Create(wrap, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
         TweenService:Create(card, TweenInfo.new(0.22), {BackgroundTransparency = 0.08}):Play()
         TweenService:Create(lbl, TweenInfo.new(0.22), {TextTransparency = 0}):Play()
         TweenService:Create(bar, TweenInfo.new(0.22), {BackgroundTransparency = 0}):Play()
-
         task.delay(LIFETIME, function()
             TweenService:Create(wrap, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Position = UDim2.new(1.2, 0, 0, 0)}):Play()
             TweenService:Create(card, TweenInfo.new(0.22), {BackgroundTransparency = 1}):Play()
@@ -1459,7 +1265,6 @@ local function notify(text, color)
     end)
 end
 
--- ============ WIDGET BUILDERS ============
 local ROW_H = isMobile and 26 or 32
 local SLIDER_H = isMobile and 38 or 44
 
@@ -1485,12 +1290,10 @@ local function makeToggle(parent, name, default, callback, tooltip)
     btn.AutoButtonColor = false
     btn.Name = name
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0.22, 0)
-
     local stroke = Instance.new("UIStroke", btn)
     stroke.Color = Theme.BORDER
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
-
     local lbl = Instance.new("TextLabel", btn)
     lbl.Size = UDim2.new(0.65, 0, 1, 0)
     lbl.Position = UDim2.new(0, 10, 0, 0)
@@ -1500,7 +1303,6 @@ local function makeToggle(parent, name, default, callback, tooltip)
     lbl.Font = Enum.Font.GothamMedium
     lbl.TextSize = fBody
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-
     local indW = isMobile and 32 or 38
     local indH = isMobile and 15 or 18
     local dotSz = isMobile and 11 or 14
@@ -1510,14 +1312,12 @@ local function makeToggle(parent, name, default, callback, tooltip)
     ind.BackgroundColor3 = default and Theme.ACCENT or Color3.fromRGB(45, 45, 55)
     ind.BorderSizePixel = 0
     Instance.new("UICorner", ind).CornerRadius = UDim.new(1, 0)
-
     local dot = Instance.new("Frame", ind)
     dot.Size = UDim2.new(0, dotSz, 0, dotSz)
     dot.Position = default and UDim2.new(1, -(dotSz+2), 0.5, -(dotSz/2)) or UDim2.new(0, 2, 0.5, -(dotSz/2))
     dot.BackgroundColor3 = Color3.fromRGB(250, 250, 250)
     dot.BorderSizePixel = 0
     Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-
     local state = default
     btn.MouseButton1Click:Connect(function()
         state = not state
@@ -1551,12 +1351,10 @@ local function makeSlider(parent, name, min, max, default, callback)
     frame.BorderSizePixel = 0
     frame.Name = name
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0.22, 0)
-
     local stroke = Instance.new("UIStroke", frame)
     stroke.Color = Theme.BORDER
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
-
     local lbl = Instance.new("TextLabel", frame)
     lbl.Size = UDim2.new(1, -16, 0, 14)
     lbl.Position = UDim2.new(0, 10, 0, 2)
@@ -1566,20 +1364,17 @@ local function makeSlider(parent, name, min, max, default, callback)
     lbl.Font = Enum.Font.GothamMedium
     lbl.TextSize = isMobile and 9 or 10
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-
     local bar = Instance.new("Frame", frame)
     bar.Size = UDim2.new(1, -20, 0, 5)
     bar.Position = UDim2.new(0, 10, 0, 22)
     bar.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
     bar.BorderSizePixel = 0
     Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-
     local fill = Instance.new("Frame", bar)
     fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
     fill.BackgroundColor3 = Theme.ACCENT
     fill.BorderSizePixel = 0
     Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
     local dragging = false
     bar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true end
@@ -1610,12 +1405,10 @@ local function makeButton(parent, name, callback, color)
     btn.BorderSizePixel = 0
     btn.AutoButtonColor = false
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0.22, 0)
-
     local stroke = Instance.new("UIStroke", btn)
     stroke.Color = Theme.BORDER
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
-
     btn.MouseButton1Click:Connect(function()
         createRipple(btn, UDim2.new(0.5, 0, 0.5, 0))
         callback()
@@ -1633,7 +1426,6 @@ end
 local function makeDropdown(parent, name, values, current, callback)
     local idx = 1
     for i, v in ipairs(values) do if v == current then idx = i break end end
-
     local btn = Instance.new("TextButton", parent)
     btn.Size = UDim2.new(1, 0, 0, ROW_H)
     btn.BackgroundColor3 = Theme.BG_OPT
@@ -1645,12 +1437,10 @@ local function makeDropdown(parent, name, values, current, callback)
     btn.BorderSizePixel = 0
     btn.AutoButtonColor = false
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0.22, 0)
-
     local stroke = Instance.new("UIStroke", btn)
     stroke.Color = Theme.BORDER
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
-
     btn.MouseButton1Click:Connect(function()
         idx = idx + 1
         if idx > #values then idx = 1 end
@@ -1677,12 +1467,10 @@ local function makeKeybind(parent, name, currentKey, callback)
     btn.BorderSizePixel = 0
     btn.AutoButtonColor = false
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0.22, 0)
-
     local stroke = Instance.new("UIStroke", btn)
     stroke.Color = Theme.BORDER
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
-
     local lbl = Instance.new("TextLabel", btn)
     lbl.Size = UDim2.new(0.6, 0, 1, 0)
     lbl.Position = UDim2.new(0, 10, 0, 0)
@@ -1692,7 +1480,6 @@ local function makeKeybind(parent, name, currentKey, callback)
     lbl.Font = Enum.Font.GothamMedium
     lbl.TextSize = fBody
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-
     local keyLbl = Instance.new("TextLabel", btn)
     keyLbl.Size = UDim2.new(0, 56, 0, 18)
     keyLbl.Position = UDim2.new(1, -64, 0.5, -9)
@@ -1704,7 +1491,6 @@ local function makeKeybind(parent, name, currentKey, callback)
     keyLbl.TextSize = isMobile and 8 or 10
     keyLbl.BorderSizePixel = 0
     Instance.new("UICorner", keyLbl).CornerRadius = UDim.new(0.4, 0)
-
     local listening = false
     local listenConn = nil
     btn.MouseButton1Click:Connect(function()
@@ -1761,12 +1547,10 @@ local function rebuildWhitelistPlayerList(container)
         row.BackgroundTransparency = 0.08
         row.BorderSizePixel = 0
         Instance.new("UICorner", row).CornerRadius = UDim.new(0.18, 0)
-
         local rowStroke = Instance.new("UIStroke", row)
         rowStroke.Color = isWL and Theme.ACCENT or Theme.BORDER
         rowStroke.Thickness = 0.5
         rowStroke.Transparency = isWL and 0.3 or 0.6
-
         local nameLbl = Instance.new("TextLabel", row)
         nameLbl.Size = UDim2.new(1, -50, 0.5, 0)
         nameLbl.Position = UDim2.new(0, 8, 0, 1)
@@ -1776,7 +1560,6 @@ local function rebuildWhitelistPlayerList(container)
         nameLbl.Font = Enum.Font.GothamMedium
         nameLbl.TextSize = fBody
         nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-
         local indW = isMobile and 28 or 34
         local indH = isMobile and 13 or 16
         local dotSz = isMobile and 9 or 12
@@ -1786,14 +1569,12 @@ local function rebuildWhitelistPlayerList(container)
         ind.BackgroundColor3 = isWL and Theme.ACCENT or Color3.fromRGB(45, 45, 55)
         ind.BorderSizePixel = 0
         Instance.new("UICorner", ind).CornerRadius = UDim.new(1, 0)
-
         local dot = Instance.new("Frame", ind)
         dot.Size = UDim2.new(0, dotSz, 0, dotSz)
         dot.Position = isWL and UDim2.new(1, -(dotSz+2), 0.5, -(dotSz/2)) or UDim2.new(0, 2, 0.5, -(dotSz/2))
         dot.BackgroundColor3 = Color3.fromRGB(250, 250, 250)
         dot.BorderSizePixel = 0
         Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-
         local state = isWL
         local toggleBtn = Instance.new("TextButton", row)
         toggleBtn.Size = UDim2.new(1, 0, 1, 0)
@@ -1819,7 +1600,6 @@ local function rebuildWhitelistPlayerList(container)
     end
 end
 
--- ============ FOV + Fast Switch dock ============
 local FIXED_GUN_LIST = {"M9", "Revolver", "Remington 870", "MP5", "M4A1", "M700", "AK-47"}
 
 local function buildFovDock()
@@ -1867,12 +1647,10 @@ local function buildFovDock()
             row.BackgroundTransparency = available and 0.08 or 0.4
             row.BorderSizePixel = 0
             Instance.new("UICorner", row).CornerRadius = UDim.new(0.24, 0)
-
             local rowStroke = Instance.new("UIStroke", row)
             rowStroke.Color = selected and Theme.ACCENT or Theme.BORDER
             rowStroke.Thickness = 0.5
             rowStroke.Transparency = selected and 0.3 or 0.6
-
             local lbl = Instance.new("TextLabel", row)
             lbl.Size = UDim2.new(1, -32, 1, 0)
             lbl.Position = UDim2.new(0, 8, 0, 0)
@@ -1882,7 +1660,6 @@ local function buildFovDock()
             lbl.Font = Enum.Font.GothamMedium
             lbl.TextSize = isMobile and 8 or 10
             lbl.TextXAlignment = Enum.TextXAlignment.Left
-
             local indW2 = isMobile and 24 or 28
             local indH2 = isMobile and 12 or 14
             local dotSz2 = isMobile and 8 or 10
@@ -1892,14 +1669,12 @@ local function buildFovDock()
             ind.BackgroundColor3 = selected and Theme.ACCENT or Color3.fromRGB(45, 45, 55)
             ind.BorderSizePixel = 0
             Instance.new("UICorner", ind).CornerRadius = UDim.new(1, 0)
-
             local dot = Instance.new("Frame", ind)
             dot.Size = UDim2.new(0, dotSz2, 0, dotSz2)
             dot.Position = selected and UDim2.new(1, -(dotSz2+2), 0.5, -(dotSz2/2)) or UDim2.new(0, 2, 0.5, -(dotSz2/2))
             dot.BackgroundColor3 = Color3.fromRGB(250, 250, 250)
             dot.BorderSizePixel = 0
             Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-
             local click = Instance.new("TextButton", row)
             click.Size = UDim2.new(1, 0, 1, 0)
             click.BackgroundTransparency = 1
@@ -1930,12 +1705,10 @@ local function buildFovDock()
         if s then startFastSwitch() else stopFastSwitch() end
         notify("Fast Switch " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
     end, "Cycle through selected guns")
-
     makeKeybind(rightScroll, "Set Hotkey", SilentAimSettings.FastSwitchHotkey, function(newKey)
         SilentAimSettings.FastSwitchHotkey = newKey
         notify("Fast Switch hotkey: " .. newKey.Name, Theme.ACCENT)
     end)
-
     makeSlider(rightScroll, "Switch Speed x100", 1, 50, math.floor(SilentAimSettings.FastSwitchDelay * 100), function(v)
         SilentAimSettings.FastSwitchDelay = v / 100
     end)
@@ -2022,13 +1795,9 @@ local function buildMain()
     makeDropdown(scroll, "Target Mode", {"Manual", "Hostile", "Trespassing"}, SilentAimSettings.TargetingMode, function(v)
         SilentAimSettings.TargetingMode = v
         notify("Targeting Mode: " .. v, Theme.ACCENT)
-        if v == "Manual" then
-            statusLabel.Text = "* mode: Manual (all valid players)"
-        elseif v == "Hostile" then
-            statusLabel.Text = "* mode: Hostile (Hostile attr = true)"
-        elseif v == "Trespassing" then
-            statusLabel.Text = "* mode: Trespassing (Trespassing attr = true)"
-        end
+        if v == "Manual" then statusLabel.Text = "* mode: Manual (all valid players)"
+        elseif v == "Hostile" then statusLabel.Text = "* mode: Hostile (Hostile attr = true)"
+        elseif v == "Trespassing" then statusLabel.Text = "* mode: Trespassing (Trespassing attr = true)" end
     end)
     local modeDesc = Instance.new("TextLabel", scroll)
     modeDesc.Size = UDim2.new(1, 0, 0, isMobile and 28 or 34)
@@ -2227,9 +1996,7 @@ local function GetFiles()
                 pos = pos - 1
                 ch = file:sub(pos, pos)
             end
-            if ch == "/" or ch == "\\" then
-                table.insert(out, file:sub(pos + 1, start - 1))
-            end
+            if ch == "/" or ch == "\\" then table.insert(out, file:sub(pos + 1, start - 1)) end
         end
     end
     return out
@@ -2257,12 +2024,10 @@ local function makeInput(parent, placeholder, callback)
     box.TextSize = fBody
     box.BorderSizePixel = 0
     Instance.new("UICorner", box).CornerRadius = UDim.new(0.22, 0)
-
     local stroke = Instance.new("UIStroke", box)
     stroke.Color = Theme.BORDER
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
-
     box.Focused:Connect(function()
         TweenService:Create(stroke, TweenInfo.new(0.15), {Transparency = 0.1, Color = Theme.ACCENT}):Play()
     end)
@@ -2351,47 +2116,34 @@ local function buildInfo()
     info.Text = [[
  SPENT HUB
 
- NEW: Forcefield Check (Main tab):
-  When enabled, silent aim and autoshoot
-  will NOT target players with an active
-  ForceField. Auto-disables once FF gone.
+ HIGHLIGHT ESP FIXED
+  Highlight now uses DepthMode.AlwaysOnTop
+  so it shows through walls in every view.
+  No more flicker — set once, stable.
 
- NEW: Targeting Mode (Main tab):
-  Manual    - aim at all valid players
-  Hostile   - inmates with Hostile=true only
-  Trespassing - inmates with Trespassing=true
-  Guards/Criminals always pass in all modes.
+ SILENT AIM
+  RightAlt toggles.
+  Hit chance rolls capped at 15hz.
 
- FOV Circle (right dock):
-  Fov Circle      - toggle drawing
-  Center FOV      - locks to screen center
-  Fov Circle Size - adjusts radius
+ FOV CIRCLE (right dock)
+  Fov Circle / Center FOV / Size
 
- Fast Switch (right dock):
-  Enable Fast Switch - start cycling
-  Set Hotkey         - bind a key
-  Switch Speed       - delay between equips
-  Gun list           - tap to include/exclude
-  Refresh Gun List   - rescans backpack
+ FAST SWITCH (right dock)
+  Hotkey default H.
+  Gun list taps to include/exclude.
 
- Noclip Punch (Main tab):
-  Toggle it on, then press F near a wall.
-  Auto-stops after ~1.2 seconds.
-  (Uses same method as full noclip)
+ NOCLIP PUNCH
+  Toggle then press F near a wall.
 
- Autoshoot (Main tab):
-  Respects Forcefield Check and
-  Targeting Mode filters automatically.
-
- Visuals tab:
+ VISUALS tab
   Noclip / Speed / Jump Power / Invisible
   Korblox / Headless
 
- Keybinds:
-  RAlt   - toggle silent aim
-  RShift - show/hide hub
-  END    - unload
-  F      - noclip punch (when enabled)
+ KEYBINDS
+  RAlt   toggle silent aim
+  RShift show/hide hub
+  END    unload
+  F      noclip punch
 ]]
     Instance.new("UICorner", info).CornerRadius = UDim.new(0.08, 0)
     local infoStroke = Instance.new("UIStroke", info)
@@ -2400,7 +2152,6 @@ local function buildInfo()
     infoStroke.Transparency = 0.6
 end
 
--- ============ TAB SYSTEM ============
 local tabs = {
     {name = "Main",    page = "main",    build = buildMain},
     {name = "ESP",     page = "esp",     build = buildESP},
@@ -2430,13 +2181,9 @@ local function selectTab(page)
             TweenService:Create(b.btn, TweenInfo.new(0.22), {BackgroundColor3 = Theme.BG_OPT, TextColor3 = Theme.TEXT}):Play()
         end
     end
-    for _, u in ipairs(tabUnderlines) do
-        u.frame.Visible = (u.page == page)
-    end
+    for _, u in ipairs(tabUnderlines) do u.frame.Visible = (u.page == page) end
     task.defer(function()
-        if scrollLayout then
-            scroll.CanvasSize = UDim2.new(0, 0, 0, scrollLayout.AbsoluteContentSize.Y + 20)
-        end
+        if scrollLayout then scroll.CanvasSize = UDim2.new(0, 0, 0, scrollLayout.AbsoluteContentSize.Y + 20) end
     end)
 end
 
@@ -2445,7 +2192,6 @@ for _, t in ipairs(tabs) do
     holder.Size = UDim2.new(1, 0, 0, isMobile and 26 or 32)
     holder.BackgroundTransparency = 1
     holder.Name = t.name
-
     local btn = Instance.new("TextButton", holder)
     btn.Size = UDim2.new(1, 0, 1, 0)
     btn.BackgroundColor3 = Theme.BG_OPT
@@ -2460,12 +2206,10 @@ for _, t in ipairs(tabs) do
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0.24, 0)
     local pad = Instance.new("UIPadding", btn)
     pad.PaddingLeft = UDim.new(0, 10)
-
     local stroke = Instance.new("UIStroke", btn)
     stroke.Color = Theme.BORDER
     stroke.Thickness = 0.5
     stroke.Transparency = 0.6
-
     local underline = Instance.new("Frame", holder)
     underline.Size = UDim2.new(0, 3, 1, -6)
     underline.Position = UDim2.new(0, 2, 0, 3)
@@ -2473,7 +2217,6 @@ for _, t in ipairs(tabs) do
     underline.BorderSizePixel = 0
     underline.Visible = false
     Instance.new("UICorner", underline).CornerRadius = UDim.new(1, 0)
-
     btn.MouseButton1Click:Connect(function() selectTab(t.page) end)
     btn.MouseEnter:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.16), {BackgroundTransparency = 0, BackgroundColor3 = Theme.BG_HOVER, TextColor3 = Theme.TEXT_STRONG}):Play()
@@ -2483,14 +2226,12 @@ for _, t in ipairs(tabs) do
         TweenService:Create(btn, TweenInfo.new(0.16), {BackgroundTransparency = 0.08, BackgroundColor3 = Theme.BG_OPT, TextColor3 = Theme.TEXT}):Play()
         TweenService:Create(stroke, TweenInfo.new(0.16), {Transparency = 0.6}):Play()
     end)
-
     table.insert(tabButtons, {btn = btn, page = t.page})
     table.insert(tabUnderlines, {frame = underline, page = t.page})
 end
 
 buildFovDock()
 
--- ============ OPEN / CLOSE ANIMATION ============
 local openState = "idle"
 local activeOpenTweens, activeCloseTweens = {}, {}
 
@@ -2606,9 +2347,7 @@ local isCompact = false
 compactBtn.MouseButton1Click:Connect(function()
     isCompact = not isCompact
     local targetH = isCompact and (isMobile and 32 or 40) or UI.mainH
-    TweenService:Create(main, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, UI.mainW, 0, targetH)
-    }):Play()
+    TweenService:Create(main, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0, UI.mainW, 0, targetH)}):Play()
     compactBtn.Text = isCompact and "+" or "-"
 end)
 
@@ -2619,51 +2358,38 @@ playOpen = function()
     _origPlayOpen()
 end
 
--- ============ ESP SYSTEM — FIXED ============
--- Root cause of 503 errors: OutlineSize is NOT a valid property on Highlight.
--- It has been removed. The only valid Highlight properties used are:
---   FillTransparency, OutlineTransparency, FillColor, OutlineColor, DepthMode, Adornee, Enabled.
--- updateESPLogic is wrapped in pcall so a single bad player state can't cascade into hundreds of errors/sec.
-
 local espData = {}
-local ESP_LOGIC_INTERVAL = 0.05  -- 20hz full logic recalc
+local ESP_LOGIC_INTERVAL = 0.05
 
 local function createESPData()
     local d = {}
-
     d.name = Drawing.new("Text")
     d.name.Visible = false
     d.name.Font = 2
     d.name.Center = true
     d.name.Outline = true
     d.name.ZIndex = 10
-
     d.hpbarbg = Drawing.new("Square")
     d.hpbarbg.Visible = false
     d.hpbarbg.Filled = true
     d.hpbarbg.Thickness = 0
     d.hpbarbg.ZIndex = 10
-
     d.hpbar = Drawing.new("Square")
     d.hpbar.Visible = false
     d.hpbar.Filled = true
     d.hpbar.Thickness = 0
     d.hpbar.ZIndex = 11
-
     d.trace = Drawing.new("Line")
     d.trace.Visible = false
     d.trace.ZIndex = 9
     d.trace.Thickness = 1
-
-    -- FIX: Removed d.hl.OutlineSize — that property does not exist on Highlight.
-    -- Valid Highlight properties: FillColor, FillTransparency, OutlineColor,
-    -- OutlineTransparency, DepthMode, Adornee, Enabled.
     d.hl = Instance.new("Highlight")
-    d.hl.FillTransparency = 0.65
+    d.hl.FillColor = SilentAimSettings.ESP_HighlightColor
+    d.hl.OutlineColor = SilentAimSettings.ESP_HighlightColor
+    d.hl.FillTransparency = 0.55
     d.hl.OutlineTransparency = 0
-    d.hl.DepthMode = Enum.HighlightDepthMode.Occluded
+    d.hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     d.hl.Enabled = false
-
     return d
 end
 
@@ -2717,12 +2443,8 @@ local function updateESPLogic()
 
     for p, info in pairs(espCache) do
         local c, h, r, head = info.c, info.h, info.r, info.head
-
         local d = espData[p]
-        if not d then
-            d = createESPData()
-            espData[p] = d
-        end
+        if not d then d = createESPData() espData[p] = d end
 
         if teamColors and p.Team and p.Team == myTeam then
             hideESPData(d)
@@ -2737,7 +2459,6 @@ local function updateESPLogic()
 
         local headPos = head and head.Position or (r.Position + Vector3.new(0, 2.5, 0))
         local feetPos = r.Position - Vector3.new(0, 2.8, 0)
-
         local hVec3 = Camera:WorldToViewportPoint(headPos)
         local fVec3 = Camera:WorldToViewportPoint(feetPos)
 
@@ -2748,7 +2469,6 @@ local function updateESPLogic()
 
         local hs = Vector2.new(hVec3.X, hVec3.Y)
         local fs = Vector2.new(fVec3.X, fVec3.Y)
-
         local refX = hVec3.Z > 0 and hs.X or fs.X
         local refY = hVec3.Z > 0 and hs.Y or fs.Y
 
@@ -2762,15 +2482,13 @@ local function updateESPLogic()
         local botY = topY + bh
         local midX = hs.X
 
-        if d.hl.Parent ~= c then
-            d.hl.Parent = c
-            d.hl.Adornee = c
-        end
         if SilentAimSettings.ESP_Highlight then
             local color = teamColors and getTeamColor(p) or SilentAimSettings.ESP_HighlightColor
-            d.hl.Enabled = true
+            if d.hl.Adornee ~= c then d.hl.Adornee = c end
+            if d.hl.Parent ~= c then d.hl.Parent = c end
             d.hl.FillColor = color
             d.hl.OutlineColor = color
+            d.hl.Enabled = true
         else
             d.hl.Enabled = false
         end
@@ -2788,13 +2506,11 @@ local function updateESPLogic()
         if SilentAimSettings.ESP_Health then
             local pct = math.clamp(h.Health / math.max(h.MaxHealth, 1), 0, 1)
             local bwd = math.max(3, math.min(6, bh * 0.06))
-            local bx  = midX - (bh * 0.275) - bwd - 4
-
+            local bx = midX - (bh * 0.275) - bwd - 4
             d.hpbarbg.Visible = true
             d.hpbarbg.Position = Vector2.new(bx, topY)
             d.hpbarbg.Size = Vector2.new(bwd, bh)
             d.hpbarbg.Color = Color3.fromRGB(20, 20, 20)
-
             local fillH = bh * pct
             d.hpbar.Visible = true
             d.hpbar.Position = Vector2.new(bx, botY - fillH)
@@ -2810,7 +2526,7 @@ local function updateESPLogic()
         if SilentAimSettings.ESP_Trace then
             d.trace.Visible = true
             d.trace.From = Vector2.new(vp.X / 2, vp.Y)
-            d.trace.To   = Vector2.new(midX, botY)
+            d.trace.To = Vector2.new(midX, botY)
             d.trace.Color = teamColors and getTeamColor(p) or SilentAimSettings.ESP_TraceColor
         else
             d.trace.Visible = false
@@ -2829,7 +2545,6 @@ Players.PlayerRemoving:Connect(function(plr)
     removeESPData(plr)
 end)
 
--- ============ INPUT HANDLING ============
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.RightAlt then
@@ -2860,7 +2575,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
--- ============ RENDER LOOP ============
 task.spawn(function()
     RenderStepped:Connect(function()
         if SilentAimSettings.ShowSilentAimTarget and SilentAimSettings.Enabled then
@@ -2886,8 +2600,6 @@ task.spawn(function()
             fov_circle.Visible = false
         end
 
-        -- FIX: pcall wrapper stops any single-frame ESP error from cascading
-        -- into hundreds of errors per second (was causing the 503 error spam).
         local now = tick()
         if now - espLastLogic >= ESP_LOGIC_INTERVAL then
             espLastLogic = now
@@ -2896,7 +2608,6 @@ task.spawn(function()
     end)
 end)
 
--- ============ SILENT AIM + PRESERVE SOUNDS HOOKS ============
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Method = getnamecallmethod()
@@ -2908,12 +2619,7 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
         if ok and isSoundClass then
             local tool = self.Parent and self.Parent.Parent
             local localChar = LocalPlayer.Character
-            if localChar
-                and tool
-                and tool.Parent == localChar
-                and tool.ClassName == "Tool"
-                and tool:GetAttribute("ToolType") == "Gun"
-            then
+            if localChar and tool and tool.Parent == localChar and tool.ClassName == "Tool" and tool:GetAttribute("ToolType") == "Gun" then
                 pcall(function()
                     local soundClone = self:Clone()
                     soundClone.Parent = Camera
@@ -2990,7 +2696,6 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, i)
     return oldIndex(self, i)
 end))
 
--- ============ STARTUP ============
 selectTab("main")
 main.Visible = true
 shadow.Visible = true
@@ -2998,9 +2703,9 @@ bgBlur.Visible = true
 openState = "open"
 notify("SPENT HUB loaded", Theme.ACCENT)
 task.delay(0.5, function()
-    notify("F = noclip punch  ·  RShift = toggle menu  ·  END = unload", Theme.TEXT_DIM)
+    notify("Highlight ESP fixed — shows through walls", Theme.ACCENT)
 end)
 task.delay(1.0, function()
-    notify("NEW: Forcefield Check + Targeting Mode on Main tab", Theme.ACCENT_DARK or Theme.ACCENT)
+    notify("RAlt aim · RShift hub · F punch · END unload", Theme.TEXT_DIM)
 end)
 print("SPENT HUB loaded.")
