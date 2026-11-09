@@ -86,13 +86,11 @@ pcall(function() startupGui:Destroy() end)
 local IS_MOBILE = UserInputService and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 -- ============ RESPONSIVE MENU DIMENSIONS ============
--- Scales the menu automatically for mobile (small screens) and PC
 local function getMenuDimensions()
     local vp = workspace.CurrentCamera.ViewportSize
     local sw, sh = vp.X, vp.Y
 
     if IS_MOBILE or sw < 700 then
-        -- Mobile layout: scaled down to fit narrow screens
         local scale = math.clamp(sw / 900, 0.45, 0.75)
         return {
             mainW = math.floor(sw * 0.96),
@@ -110,7 +108,6 @@ local function getMenuDimensions()
             isMobile = true,
         }
     else
-        -- PC layout: original dimensions
         return {
             mainW = 890,
             mainH = 440,
@@ -148,9 +145,7 @@ local SilentAimSettings = {
     TargetCop = true,
     TargetInmate = true,
     TargetCriminal = true,
-    -- NEW: Forcefield Check
     ForcefieldCheck = true,
-    -- NEW: Targeting Mode ("Manual", "Hostile", "Trespassing")
     TargetingMode = "Manual",
     ESP_Enabled = false,
     ESP_Team = false,
@@ -271,8 +266,6 @@ end
 
 local function getPositionOnScreen(Vector)
     local Vec3, OnScreen = WorldToScreen(Camera, Vector)
-    -- Vec3.Z is depth: negative means the point is behind the camera.
-    -- When behind camera, X/Y are mirrored and garbage — treat as off-screen.
     if Vec3.Z < 0 then
         return Vector2.new(), false
     end
@@ -321,47 +314,28 @@ local function IsPlayerVisible(Player)
     return #GetPartsObscuringTarget(Camera, CastPoints, IgnoreList) == 0
 end
 
--- ============ BUG FIX: FORCEFIELD CHECK ============
--- Returns true if player is currently protected by a ForceField
 local function HasForcefield(Player)
     local char = Player.Character
     if not char then return false end
     return char:FindFirstChildOfClass("ForceField") ~= nil
 end
 
--- ============ NEW: TARGETING MODE CHECK ============
--- Determines if a player matches the current TargetingMode setting
--- Guards/Criminals always pass (they can't be Hostile/Trespassing inmates)
--- Inmates are filtered based on their Hostile/Trespassing attributes
 local function matchesTargetingMode(Player)
     local mode = SilentAimSettings.TargetingMode
-    if mode == "Manual" then
-        -- Manual: aim at anyone who passes team checks (original behavior)
-        return true
-    end
-
-    -- For Hostile/Trespassing modes, only apply attribute filter to Inmates
-    -- Guards and Criminals always pass (they are inherently valid targets)
+    if mode == "Manual" then return true end
     if Player.Team then
         local teamName = Player.Team.Name
-        if teamName == "Guards" or teamName == "Criminals" then
-            -- These teams are always valid when selected
-            return true
-        end
-        -- Inmates: check attributes
+        if teamName == "Guards" or teamName == "Criminals" then return true end
         if teamName == "Inmates" then
             local char = Player.Character
             if not char then return false end
             if mode == "Hostile" then
-                local hostile = char:GetAttribute("Hostile")
-                return hostile == true
+                return char:GetAttribute("Hostile") == true
             elseif mode == "Trespassing" then
-                local trespass = char:GetAttribute("Trespassing")
-                return trespass == true
+                return char:GetAttribute("Trespassing") == true
             end
         end
     end
-    -- Unknown team: allow in Manual mode, deny in filter modes
     return mode == "Manual"
 end
 
@@ -398,9 +372,7 @@ local function getClosestPlayer()
         if isWhitelisted(Player) then continue end
         if SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team then continue end
         if not matchesTeam(Player) then continue end
-        -- NEW: Forcefield check - skip players who are protected
         if SilentAimSettings.ForcefieldCheck and HasForcefield(Player) then continue end
-        -- NEW: Targeting mode filter
         if not matchesTargetingMode(Player) then continue end
         local Character = Player.Character
         if not Character then continue end
@@ -610,7 +582,7 @@ RunService.Heartbeat:Connect(function()
     performAutoShot(weapon)
 end)
 
--- FAST SWITCH
+-- ============ FAST SWITCH — FIX: fire-and-forget EquipTool to prevent lag spikes ============
 local fastSwitchConnection = nil
 local function stopFastSwitch()
     if fastSwitchConnection then
@@ -643,10 +615,13 @@ local function startFastSwitch()
                 if not SilentAimSettings.FastSwitchEnabled then break end
                 local tool = backpack:FindFirstChild(weaponName) or char:FindFirstChild(weaponName)
                 if tool and tool:IsA("Tool") then
-                    -- FIX: EquipTool yields (network round-trip). Fire-and-forget with
-                    -- task.spawn so the loop never blocks, eliminating client-side lag spikes.
+                    -- FIX: EquipTool yields on network round-trip.
+                    -- Fire-and-forget with task.spawn so the loop never blocks,
+                    -- eliminating client-side lag spikes.
+                    local h = humanoid
+                    local t = tool
                     task.spawn(function()
-                        pcall(function() humanoid:EquipTool(tool) end)
+                        pcall(function() h:EquipTool(t) end)
                     end)
                 end
                 task.wait(SilentAimSettings.FastSwitchDelay)
@@ -667,11 +642,7 @@ local function getBackpackGuns()
     return out
 end
 
--- ============ BUG FIX: NOCLIP - Rewritten to match NoclipPunch method ============
--- Original noclip was just setting CanCollide=false on a timer, which breaks on
--- server-authoritative walls. We now use the same CFrame-override approach
--- that NoclipPunch uses: continuously re-assert no collision every Stepped frame.
-
+-- ============ NOCLIP ============
 pcall(function()
     local hook = newcclosure(function() end)
     for _, obj in next, getgc(false) do
@@ -687,13 +658,10 @@ end)
 local noclipActive = false
 local noclipConn = nil
 
--- FIXED noclipStep: runs every Stepped frame, aggressively disables collision
--- on ALL descendant BaseParts including newly added parts (accessories etc.)
 local function noclipStep()
     if not noclipActive then return end
     local char = LocalPlayer.Character
     if not char then return end
-    -- Disable collision on every BasePart in character every frame
     for _, part in ipairs(char:GetDescendants()) do
         if part:IsA("BasePart") and part.CanCollide then
             part.CanCollide = false
@@ -707,23 +675,19 @@ local function stopNoclip()
         noclipConn:Disconnect()
         noclipConn = nil
     end
-    -- Restore HumanoidRootPart collision so player lands on floor properly
     local char = LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then hrp.CanCollide = false end -- HRP is intentionally left non-collide
+        if hrp then hrp.CanCollide = false end
     end
 end
 
 local function startNoclip()
     if noclipActive then return end
     noclipActive = true
-    -- Use Stepped (physics step) for most reliable per-frame collision override
     noclipConn = RunService.Stepped:Connect(noclipStep)
 end
 
--- NoclipPunch: same as original but calls the fixed startNoclip
--- The punch triggers noclip for a short window so the player phases through
 local noclipPunchActive = false
 local noclipPunchConn = nil
 
@@ -738,8 +702,6 @@ end
 local function startNoclipPunch()
     if noclipPunchActive then return end
     noclipPunchActive = true
-
-    -- Noclip punch loop: runs same way as full noclip but auto-stops when clear
     noclipPunchConn = RunService.Stepped:Connect(function()
         if not noclipPunchActive then return end
         local char = LocalPlayer.Character
@@ -750,15 +712,12 @@ local function startNoclipPunch()
             end
         end
     end)
-
-    -- Auto-stop punch noclip after a short window (player should be through the wall)
     task.delay(1.2, function()
         stopNoclipPunch()
     end)
 end
 
 local function doNoclipPunch()
-    -- Activate punch-noclip slightly after the punch animation starts
     task.delay(0.35, startNoclipPunch)
 end
 
@@ -887,9 +846,7 @@ local function applyKorblox(character)
     local rightLeg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightUpperLeg")
     if not rightLeg then return end
     for _, v in ipairs(rightLeg:GetChildren()) do
-        if v:IsA("SpecialMesh") or v:IsA("CharacterMesh") then
-            v:Destroy()
-        end
+        if v:IsA("SpecialMesh") or v:IsA("CharacterMesh") then v:Destroy() end
     end
     local mesh = Instance.new("SpecialMesh")
     mesh.MeshType = Enum.MeshType.FileMesh
@@ -909,9 +866,7 @@ local function applyHeadless(character)
     local face = head:FindFirstChildOfClass("Decal")
     if face then face:Destroy() end
     for _, v in ipairs(head:GetChildren()) do
-        if v:IsA("SpecialMesh") or v:IsA("CharacterMesh") then
-            v:Destroy()
-        end
+        if v:IsA("SpecialMesh") or v:IsA("CharacterMesh") then v:Destroy() end
     end
     local mesh = Instance.new("SpecialMesh")
     mesh.MeshType = Enum.MeshType.FileMesh
@@ -933,8 +888,6 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 -- ============ GUI ============
--- BUG FIX: Responsive menu that scales for mobile / small screens
-
 local gui = Instance.new("ScreenGui")
 gui.Name = "SpentHub"
 gui.ResetOnSpawn = false
@@ -944,7 +897,6 @@ gui.DisplayOrder = 100
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local function buildMenuFrames()
-    -- Remove any existing frames so we can rebuild on resize
     for _, c in ipairs(gui:GetChildren()) do
         if c.Name ~= "SpentHubNotif" and c.Name ~= "SpentHubToggle" then
             if c:IsA("Frame") or c:IsA("ScreenGui") then
@@ -957,7 +909,6 @@ local function buildMenuFrames()
     local sw, sh = vp.X, vp.Y
     local isMobile = IS_MOBILE or sw < 700
 
-    -- Compute adaptive sizes
     local mainW, mainH, mainPosX, mainPosY
     local sideW, contX, contWOff, rightW
     local titleH, statusH, fBody, fHead
@@ -1052,7 +1003,6 @@ local function buildMenuFrames()
         bgBlur.Visible = main.Visible
     end)
 
-    -- Title bar
     local titleBar = Instance.new("Frame", main)
     titleBar.Name = "titleBar"
     titleBar.Size = UDim2.new(1, 0, 0, titleH)
@@ -1163,7 +1113,6 @@ local function buildMenuFrames()
     local compactBtn, _ = makeTitleBtn("-", isMobile and -56 or -90)
     local closeBtn, _ = makeTitleBtn("x", isMobile and -28 or -58)
 
-    -- Status strip
     local statusStrip = Instance.new("Frame", main)
     statusStrip.Name = "statusStrip"
     statusStrip.Size = UDim2.new(1, 0, 0, statusH)
@@ -1187,7 +1136,6 @@ local function buildMenuFrames()
 
     local topOffset = titleH + statusH + 8
 
-    -- Sidebar
     local sidebar = Instance.new("Frame", main)
     sidebar.Name = "sidebar"
     sidebar.Size = UDim2.new(0, sideW, 1, -topOffset - 8)
@@ -1231,7 +1179,6 @@ local function buildMenuFrames()
     divider.BorderSizePixel = 0
     divider.ZIndex = 102
 
-    -- Content panel
     local content = Instance.new("Frame", main)
     content.Name = "content"
     content.Size = UDim2.new(0, mainW - contX - rightW - 16, 1, -(topOffset + 8))
@@ -1292,7 +1239,6 @@ local function buildMenuFrames()
     scrollLayout.Padding = UDim.new(0, isMobile and 4 or 7)
     scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-    -- Right dock
     local rightDock = Instance.new("Frame", main)
     rightDock.Name = "rightDock"
     rightDock.Size = UDim2.new(0, rightW, 1, -(topOffset + 8))
@@ -1390,7 +1336,6 @@ local function animateAccentLine()
     }):Play()
 end
 
--- Toggle button (shown when menu is closed)
 local hubToggleBtn = Instance.new("TextButton", gui)
 hubToggleBtn.Name = "SpentHubToggle"
 hubToggleBtn.Size = UDim2.new(0, isMobile and 42 or 50, 0, isMobile and 42 or 50)
@@ -1435,7 +1380,6 @@ hubToggleBtn.MouseLeave:Connect(function()
     TweenService:Create(hubToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.BG_PANEL, TextColor3 = Theme.ACCENT}):Play()
 end)
 
--- Notification system
 local notifFrame = Instance.new("Frame", gui)
 notifFrame.Name = "SpentHubNotif"
 notifFrame.Size = UDim2.new(0, isMobile and 260 or 340, 0, 400)
@@ -2068,14 +2012,12 @@ local function buildMain()
     end)
     makeSlider(scroll, "Hit Chance", 0, 100, SilentAimSettings.HitChance, function(v) SilentAimSettings.HitChance = v end)
 
-    -- NEW: Forcefield Check
     makeSection(scroll, "FORCEFIELD")
     makeToggle(scroll, "Forcefield Check", SilentAimSettings.ForcefieldCheck, function(s)
         SilentAimSettings.ForcefieldCheck = s
         notify("Forcefield Check " .. (s and "on - protected players ignored" or "off"), s and Theme.ACCENT or Theme.TEXT_DIM)
     end, "Skip players with active ForceField (silent aim + autoshoot)")
 
-    -- NEW: Targeting Mode
     makeSection(scroll, "TARGETING MODE")
     makeDropdown(scroll, "Target Mode", {"Manual", "Hostile", "Trespassing"}, SilentAimSettings.TargetingMode, function(v)
         SilentAimSettings.TargetingMode = v
@@ -2088,7 +2030,6 @@ local function buildMain()
             statusLabel.Text = "* mode: Trespassing (Trespassing attr = true)"
         end
     end)
-    -- Info label for Targeting Mode
     local modeDesc = Instance.new("TextLabel", scroll)
     modeDesc.Size = UDim2.new(1, 0, 0, isMobile and 28 or 34)
     modeDesc.BackgroundColor3 = Theme.BG_OPT
@@ -2661,8 +2602,6 @@ end
 hubToggleBtn.MouseButton1Click:Connect(function() playOpen() end)
 closeBtn.MouseButton1Click:Connect(function() playClose() end)
 
--- FIX: Use an explicit state variable instead of reading Size.Y.Offset,
--- which is unreliable after open/close animations reset the frame size.
 local isCompact = false
 compactBtn.MouseButton1Click:Connect(function()
     isCompact = not isCompact
@@ -2673,7 +2612,6 @@ compactBtn.MouseButton1Click:Connect(function()
     compactBtn.Text = isCompact and "+" or "-"
 end)
 
--- Reset compact state when menu opens/closes so it's always consistent
 local _origPlayOpen = playOpen
 playOpen = function()
     isCompact = false
@@ -2681,53 +2619,48 @@ playOpen = function()
     _origPlayOpen()
 end
 
--- ============ BUG FIX: ESP SYSTEM - Rewritten ============
--- Original ESP used Drawing objects but had broken positioning and 60hz update issues.
--- New system:
---   1. Uses Highlight instances for the actual highlight (most reliable, server-sided)
---   2. Uses Drawing for name + health bar only (much cheaper than BillboardGui)
---   3. Runs on RenderStepped (every frame) for smooth 60hz+ updates — but only
---      recalculates full logic at 20hz to keep it cheap, with screen-pos updates every frame.
---   4. Properly handles off-screen players and players that leave.
+-- ============ ESP SYSTEM — FIXED ============
+-- Root cause of 503 errors: OutlineSize is NOT a valid property on Highlight.
+-- It has been removed. The only valid Highlight properties used are:
+--   FillTransparency, OutlineTransparency, FillColor, OutlineColor, DepthMode, Adornee, Enabled.
+-- updateESPLogic is wrapped in pcall so a single bad player state can't cascade into hundreds of errors/sec.
 
 local espData = {}
-local ESP_LOGIC_INTERVAL = 0.05  -- Full logic recalc at 20hz
+local ESP_LOGIC_INTERVAL = 0.05  -- 20hz full logic recalc
 
 local function createESPData()
     local d = {}
-    -- Name label (Drawing)
+
     d.name = Drawing.new("Text")
     d.name.Visible = false
-    d.name.Font = 2  -- UI font
+    d.name.Font = 2
     d.name.Center = true
     d.name.Outline = true
     d.name.ZIndex = 10
 
-    -- Health bar background
     d.hpbarbg = Drawing.new("Square")
     d.hpbarbg.Visible = false
     d.hpbarbg.Filled = true
     d.hpbarbg.Thickness = 0
     d.hpbarbg.ZIndex = 10
 
-    -- Health bar fill
     d.hpbar = Drawing.new("Square")
     d.hpbar.Visible = false
     d.hpbar.Filled = true
     d.hpbar.Thickness = 0
     d.hpbar.ZIndex = 11
 
-    -- Trace line
     d.trace = Drawing.new("Line")
     d.trace.Visible = false
     d.trace.ZIndex = 9
     d.trace.Thickness = 1
 
-    -- Highlight instance (parented to character when active)
+    -- FIX: Removed d.hl.OutlineSize — that property does not exist on Highlight.
+    -- Valid Highlight properties: FillColor, FillTransparency, OutlineColor,
+    -- OutlineTransparency, DepthMode, Adornee, Enabled.
     d.hl = Instance.new("Highlight")
     d.hl.FillTransparency = 0.65
     d.hl.OutlineTransparency = 0
-    d.hl.OutlineSize = 1
     d.hl.DepthMode = Enum.HighlightDepthMode.Occluded
     d.hl.Enabled = false
 
@@ -2755,9 +2688,7 @@ local function removeESPData(plr)
 end
 
 local espLastLogic = 0
-
--- Cache player data between frames to avoid GetPlayers() spam
-local espCache = {}  -- {char, humanoid, rootPart, head} per player
+local espCache = {}
 
 local function updateESPLogic()
     if not SilentAimSettings.ESP_Enabled then
@@ -2773,7 +2704,6 @@ local function updateESPLogic()
     local myTeam = LocalPlayer.Team
     local vp = Camera.ViewportSize
 
-    -- Rebuild cache
     table.clear(espCache)
     for _, p in ipairs(Players:GetPlayers()) do
         if p == LocalPlayer then continue end
@@ -2788,36 +2718,29 @@ local function updateESPLogic()
     for p, info in pairs(espCache) do
         local c, h, r, head = info.c, info.h, info.r, info.head
 
-        -- Get or create drawing data
         local d = espData[p]
         if not d then
             d = createESPData()
             espData[p] = d
         end
 
-        -- Team color skip
         if teamColors and p.Team and p.Team == myTeam then
             hideESPData(d)
             continue
         end
 
-        -- Distance check
         local dist = (r.Position - camPos).Magnitude
         if dist > maxDist then
             hideESPData(d)
             continue
         end
 
-        -- Screen position check
-        -- We use WorldToViewportPoint (returns Vector3 where Z = depth).
-        -- Z < 0 means behind camera; skip entirely in that case.
         local headPos = head and head.Position or (r.Position + Vector3.new(0, 2.5, 0))
         local feetPos = r.Position - Vector3.new(0, 2.8, 0)
 
-        local hVec3, hon = Camera:WorldToViewportPoint(headPos)
-        local fVec3, fon = Camera:WorldToViewportPoint(feetPos)
+        local hVec3 = Camera:WorldToViewportPoint(headPos)
+        local fVec3 = Camera:WorldToViewportPoint(feetPos)
 
-        -- Behind-camera guard: Z negative = mirrored garbage coords
         if hVec3.Z <= 0 and fVec3.Z <= 0 then
             hideESPData(d)
             continue
@@ -2826,25 +2749,19 @@ local function updateESPLogic()
         local hs = Vector2.new(hVec3.X, hVec3.Y)
         local fs = Vector2.new(fVec3.X, fVec3.Y)
 
-        -- Use whichever point is in front of camera for culling
         local refX = hVec3.Z > 0 and hs.X or fs.X
         local refY = hVec3.Z > 0 and hs.Y or fs.Y
 
-        -- Off-screen culling with generous padding
         if refX < -200 or refX > vp.X + 200 or refY < -200 or refY > vp.Y + 200 then
             hideESPData(d)
             continue
         end
 
-        -- Height in pixels between head and feet screen positions.
-        -- Clamp to sensible minimum so nearby players don't get giant bars.
         local bh = math.clamp(math.abs(hs.Y - fs.Y), 12, 400)
-        -- Top of bounding box is whichever Y is smaller (head is usually above feet)
-        local topY  = math.min(hs.Y, fs.Y)
-        local botY  = topY + bh
-        local midX  = hs.X  -- head X is a good horizontal center
+        local topY = math.min(hs.Y, fs.Y)
+        local botY = topY + bh
+        local midX = hs.X
 
-        -- Highlight
         if d.hl.Parent ~= c then
             d.hl.Parent = c
             d.hl.Adornee = c
@@ -2858,7 +2775,6 @@ local function updateESPLogic()
             d.hl.Enabled = false
         end
 
-        -- Name: sits 4px above the top of the bounding box
         if SilentAimSettings.ESP_Name then
             d.name.Visible = true
             d.name.Text = string.format("%s [%d]", p.Name, math.floor(dist))
@@ -2869,23 +2785,20 @@ local function updateESPLogic()
             d.name.Visible = false
         end
 
-        -- Health bar: sits 4px to the left of the bounding box
         if SilentAimSettings.ESP_Health then
             local pct = math.clamp(h.Health / math.max(h.MaxHealth, 1), 0, 1)
-            local bwd = math.max(3, math.min(6, bh * 0.06))  -- bar width, proportional but capped
-            local bx  = midX - (bh * 0.275) - bwd - 4       -- left edge of bounding box minus gap
+            local bwd = math.max(3, math.min(6, bh * 0.06))
+            local bx  = midX - (bh * 0.275) - bwd - 4
 
             d.hpbarbg.Visible = true
             d.hpbarbg.Position = Vector2.new(bx, topY)
             d.hpbarbg.Size = Vector2.new(bwd, bh)
             d.hpbarbg.Color = Color3.fromRGB(20, 20, 20)
 
-            -- Fill grows from bottom of bar upward
             local fillH = bh * pct
             d.hpbar.Visible = true
             d.hpbar.Position = Vector2.new(bx, botY - fillH)
             d.hpbar.Size = Vector2.new(bwd, fillH)
-            -- Green at full HP → yellow → red at 0
             local r2 = math.floor(255 * (1 - pct))
             local g2 = math.floor(255 * pct)
             d.hpbar.Color = Color3.fromRGB(r2, g2, 40)
@@ -2894,7 +2807,6 @@ local function updateESPLogic()
             d.hpbarbg.Visible = false
         end
 
-        -- Trace line from screen bottom-center to player's feet
         if SilentAimSettings.ESP_Trace then
             d.trace.Visible = true
             d.trace.From = Vector2.new(vp.X / 2, vp.Y)
@@ -2905,7 +2817,6 @@ local function updateESPLogic()
         end
     end
 
-    -- Clean up data for players who left or no longer have characters
     for plr, _ in pairs(espData) do
         if not plr.Parent or not espCache[plr] then
             removeESPData(plr)
@@ -2952,7 +2863,6 @@ end)
 -- ============ RENDER LOOP ============
 task.spawn(function()
     RenderStepped:Connect(function()
-        -- Silent aim target indicator (every frame = smooth)
         if SilentAimSettings.ShowSilentAimTarget and SilentAimSettings.Enabled then
             if currentTarget and currentTarget.Parent then
                 local Root = currentTarget.Parent and currentTarget.Parent.PrimaryPart or currentTarget
@@ -2967,7 +2877,6 @@ task.spawn(function()
             mouse_box.Visible = false
         end
 
-        -- FOV circle (every frame = smooth)
         if SilentAimSettings.FOVVisible then
             fov_circle.Visible = true
             fov_circle.Radius = SilentAimSettings.FOVRadius
@@ -2977,30 +2886,23 @@ task.spawn(function()
             fov_circle.Visible = false
         end
 
-        -- ESP: full logic at 20hz, screen positions every frame via highlight
+        -- FIX: pcall wrapper stops any single-frame ESP error from cascading
+        -- into hundreds of errors per second (was causing the 503 error spam).
         local now = tick()
         if now - espLastLogic >= ESP_LOGIC_INTERVAL then
             espLastLogic = now
-            updateESPLogic()
+            pcall(updateESPLogic)
         end
     end)
 end)
 
 -- ============ SILENT AIM + PRESERVE SOUNDS HOOKS ============
--- IMPORTANT: Both PreserveSounds and SilentAim need __namecall.
--- We merge them into ONE hookmetamethod call — two separate calls would
--- conflict (the second hook overwrites the first, breaking whichever ran first).
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Method = getnamecallmethod()
     local Args = {...}
     local self = Args[1]
 
-    -- ---- PRESERVE SOUNDS ----
-    -- When a gun's sound plays, clone it to Camera so it's heard locally
-    -- even during fast switch / autoshoot (tool gets unequipped mid-sound).
-    -- Autoshoot already clones ShootSound manually in performAutoShot,
-    -- so this catches all other gun sounds (reload, empty click, etc).
     if Method == "Play" and not checkcaller() then
         local ok, isSoundClass = pcall(function() return self.ClassName == "Sound" end)
         if ok and isSoundClass then
@@ -3018,12 +2920,11 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
                     soundClone.Playing = true
                     task.delay(5, function() pcall(function() soundClone:Destroy() end) end)
                 end)
-                return  -- let original also play (don't swallow it)
+                return
             end
         end
     end
 
-    -- ---- SILENT AIM ----
     local chance = CalculateChance(SilentAimSettings.HitChance)
     if SilentAimSettings.Enabled and self == workspace and not checkcaller() and chance == true and not AutoShootRaycastInProgress then
         if Method == "FindPartOnRayWithIgnoreList" and SilentAimSettings.SilentAimMethod == Method then
