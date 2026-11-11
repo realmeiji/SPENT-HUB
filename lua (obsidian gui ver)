@@ -948,41 +948,11 @@ local Window = Library:CreateWindow({
     MobileButtonsSide = "Left",
 })
 
-local function BlankTabLabel(Tab)
-    for _, descendant in ipairs(Tab:GetDescendants()) do
-        if descendant:IsA("TextLabel") and descendant.Text ~= "" then
-            descendant.Text = ""
-        end
-    end
-end
-
-local AimTab = Window:AddTab("Aim", "crosshair")
-local VisualsTab = Window:AddTab("Visuals", "eye")
-local PlayerTab = Window:AddTab("Player", "user")
-local ConfigTab = Window:AddTab("Config", "settings")
-local InfoTab = Window:AddTab("Info", "info")
-
-local function HideAllTabLabels()
-    for _, tabName in ipairs({"Aim", "Visuals", "Player", "Config", "Info"}) do
-        local tab = Library.Tabs[tabName]
-        if tab and tab.Sides and tab.Sides[1] then
-            local parent = tab.Sides[1].Parent
-            if parent then
-                for _, child in ipairs(parent.Parent:GetChildren()) do
-                    if child:IsA("TextButton") then
-                        local label = child:FindFirstChildOfClass("TextLabel")
-                        if label then label.Text = "" end
-                        for _, sub in ipairs(child:GetChildren()) do
-                            if sub:IsA("TextLabel") then sub.Text = "" end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end
-
-task.defer(HideAllTabLabels)
+local AimTab = Window:AddTab("", "crosshair")
+local VisualsTab = Window:AddTab("", "eye")
+local PlayerTab = Window:AddTab("", "user")
+local ConfigTab = Window:AddTab("", "settings")
+local InfoTab = Window:AddTab("", "info")
 
 local AimMain = AimTab:AddLeftGroupbox("Silent Aim")
 AimMain:AddToggle("AimEnabled", {
@@ -1160,29 +1130,6 @@ ESPRange:AddSlider("ESPMaxDistance", {
     Min = 100, Max = 3000, Default = 1500,
     Suffix = " studs",
     Callback = function(v) SilentAimSettings.ESP_MaxDistance = v end,
-})
-
-local ESPFOV = VisualsTab:AddRightGroupbox("FOV Circle")
-ESPFOV:AddToggle("FOVVisible2", {
-    Text = "Show FOV Circle",
-    Default = false,
-    Callback = function(state)
-        SilentAimSettings.FOVVisible = state
-        fov_circle.Visible = state
-    end,
-})
-ESPFOV:AddToggle("FOVCenter2", {
-    Text = "Center FOV",
-    Default = false,
-    Callback = function(state) SilentAimSettings.FOVCenter = state end,
-})
-ESPFOV:AddSlider("FOVRadius2", {
-    Text = "FOV Radius",
-    Min = 0, Max = 400, Default = 130,
-    Callback = function(v)
-        SilentAimSettings.FOVRadius = v
-        fov_circle.Radius = v
-    end,
 })
 
 local PlayerMain = PlayerTab:AddLeftGroupbox("Movement")
@@ -1498,4 +1445,4 @@ task.delay(0.6, function()
     Library:Notify({Title = "Keybinds", Description = "RShift toggle · F punch · H fastswitch", Time = 4})
 end)
 
-print("SPENT HUB loaded (Obsidian GUI · icon-only tabs).")
+print("SPENT HUB loaded (Obsidian GUI · icon-only tabs · FOV controls only on Aim).")
