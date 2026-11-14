@@ -124,6 +124,7 @@ local SilentAimSettings = {
     FastSwitchEnabled = false, FastSwitchDelay = 0.05,
     FastSwitchList = {"M9", "Revolver", "Remington 870", "MP5", "M4A1", "M700", "AK-47"},
     FastSwitchHotkey = Enum.KeyCode.H, NoclipPunchEnabled = false,
+    AutoSprintEnabled = false,
 }
 getgenv().SilentAimSettings = SilentAimSettings
 
@@ -162,34 +163,6 @@ local RenderStepped = RunService.RenderStepped
 local GetMouseLocation = UserInputService.GetMouseLocation
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
 local PredictionAmount = 0.165
-
-local originalMouseIconEnabled = UserInputService.MouseIconEnabled
-UserInputService.MouseIconEnabled = false
-
-local cursorGui = Instance.new("ScreenGui")
-cursorGui.Name = "SpentHubCursor"
-cursorGui.ResetOnSpawn = false
-cursorGui.IgnoreGuiInset = true
-cursorGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-cursorGui.DisplayOrder = 2147483647
-cursorGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
-local customCursor = Instance.new("ImageLabel")
-customCursor.Name = "Cursor"
-customCursor.Size = UDim2.fromOffset(32, 32)
-customCursor.BackgroundTransparency = 1
-customCursor.Image = "rbxassetid://2025732283"
-customCursor.ImageColor3 = Theme.ACCENT 
-customCursor.AnchorPoint = Vector2.new(0, 0)
-customCursor.ZIndex = 2147483647
-customCursor.Visible = not IS_MOBILE
-customCursor.Parent = cursorGui
-
-local cursorConnection = RenderStepped:Connect(function()
-    if IS_MOBILE then return end
-    local mouseLoc = GetMouseLocation(UserInputService)
-    customCursor.Position = UDim2.fromOffset(mouseLoc.X, mouseLoc.Y)
-end)
 
 local mouse_box = Drawing.new("Square")
 mouse_box.Visible = false
@@ -545,6 +518,36 @@ local function startFastSwitch()
     end)
 end
 
+local SprintActive = false
+local SprintConn = nil
+
+local function StopAutoSprint()
+    SprintActive = false
+    if SprintConn then
+        SprintConn:Disconnect()
+        SprintConn = nil
+    end
+end
+
+local function StartAutoSprint()
+    if SprintActive then return end
+    SprintActive = true
+    SprintConn = RunService.RenderStepped:Connect(function()
+        if not SilentAimSettings.AutoSprintEnabled then return end
+        local char = LocalPlayer.Character
+        if not char then return end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not humanoid then return end
+        
+        -- Force sprint by shifting the humanoid state if not already sprinting
+        if humanoid.MoveDirection.Magnitude > 0 then
+            if humanoid.WalkSpeed < 20 then
+                humanoid.WalkSpeed = 20
+            end
+        end
+    end)
+end
+
 pcall(function()
     local hook = newcclosure(function() end)
     for _, obj in next, getgc(false) do
@@ -747,6 +750,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     applySpeed(SilentAimSettings.SpeedValue)
     applyJumpPower(SilentAimSettings.JumpPowerValue)
     if SilentAimSettings.FastSwitchEnabled then startFastSwitch() end
+    if SilentAimSettings.AutoSprintEnabled then StartAutoSprint() end
 end)
 
 local gui = Instance.new("ScreenGui")
@@ -1835,6 +1839,13 @@ local function buildMain()
         notify("Autoshoot " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
     end, "Auto fires at current silent aim target")
 
+    makeSection(scroll, "AUTO SPRINT")
+    makeToggle(scroll, "Auto Sprint", SilentAimSettings.AutoSprintEnabled, function(s)
+        SilentAimSettings.AutoSprintEnabled = s
+        if s then StartAutoSprint() else StopAutoSprint() end
+        notify("Auto Sprint " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
+    end, "Automatically sprint without holding shift")
+
     makeSection(scroll, "NOCLIP PUNCH")
     makeToggle(scroll, "Noclip Punch", SilentAimSettings.NoclipPunchEnabled, function(s)
         SilentAimSettings.NoclipPunchEnabled = s
@@ -1989,7 +2000,6 @@ local function updateThemeColors()
     rightHeader.TextColor3 = Theme.ACCENT
     icon.TextColor3 = Theme.ACCENT
     accentLine.BackgroundColor3 = Theme.ACCENT
-    customCursor.ImageColor3 = Theme.ACCENT
 end
 
 local MainFileName = "UniversalSilentAim"
@@ -2588,10 +2598,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
         doNoclipPunch()
     end
     if input.KeyCode == Enum.KeyCode.End then
-        UserInputService.MouseIconEnabled = originalMouseIconEnabled
-        pcall(function() cursorGui:Destroy() end)
-        if cursorConnection then cursorConnection:Disconnect() end
-        
         pcall(function() gui:Destroy() end)
         pcall(function() fov_circle:Remove() end)
         pcall(function() mouse_box:Remove() end)
@@ -2599,6 +2605,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
         stopNoclipPunch()
         stopInvisible()
         stopFastSwitch()
+        StopAutoSprint()
         for _, p in ipairs(Players:GetPlayers()) do removeESPData(p) end
         print("SPENT HUB unloaded.")
     end
