@@ -1,8 +1,9 @@
 if not game:IsLoaded() then game.Loaded:Wait() end
-if not syn or not protectgui then getgenv().protectgui = function() end end
+if not getgenv().Library then
+    error("Obsidian library not found. Load Obsidian first.")
+end
 
-local Obsidian = loadstring(readfile("obsidian.lua"))()
-
+local Library = getgenv().Library
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -14,15 +15,14 @@ local Camera = workspace.CurrentCamera
 local Mouse = LocalPlayer:GetMouse()
 
 local ACCENT = Color3.fromRGB(255, 182, 193)
-local ACCENT_DIM = Color3.fromRGB(240, 150, 180)
 local CORNER = 0.40
 
-Obsidian.Scheme.AccentColor = ACCENT
-Obsidian.Scheme.BackgroundColor = Color3.fromRGB(12, 12, 16)
-Obsidian.Scheme.MainColor = Color3.fromRGB(18, 18, 24)
-Obsidian.Scheme.OutlineColor = Color3.fromRGB(50, 50, 65)
-Obsidian.Scheme.FontColor = Color3.fromRGB(235, 235, 245)
-Obsidian.CornerRadius = 14
+Library.Scheme.AccentColor = ACCENT
+Library.Scheme.BackgroundColor = Color3.fromRGB(12, 12, 16)
+Library.Scheme.MainColor = Color3.fromRGB(18, 18, 24)
+Library.Scheme.OutlineColor = Color3.fromRGB(50, 50, 65)
+Library.Scheme.FontColor = Color3.fromRGB(235, 235, 245)
+Library.CornerRadius = 14
 
 local SilentAimSettings = {
     Enabled = false, TeamCheck = false, VisibleCheck = false,
@@ -545,7 +545,7 @@ LocalPlayer.CharacterAdded:Connect(function(c)
     if SilentAimSettings.FastSwitchEnabled then startFastSwitch() end
 end)
 
-local Window = Obsidian:CreateWindow({
+local Window = Library:CreateWindow({
     Title = "",
     Footer = "",
     Size = UDim2.fromOffset(560, 380),
@@ -557,16 +557,14 @@ local Window = Obsidian:CreateWindow({
     NotifySide = "Right",
 })
 
-local ScreenGui = Obsidian.ScreenGui
 local MainFrame
-for _, d in ipairs(ScreenGui:GetDescendants()) do
+for _, d in ipairs(Library.ScreenGui:GetDescendants()) do
     if d:IsA("Frame") and d.Name == "Main" then MainFrame = d break end
 end
 if MainFrame then
     local corner = MainFrame:FindFirstChildOfClass("UICorner")
     if corner then corner.CornerRadius = UDim.new(CORNER, 0) end
     local glow = Instance.new("UIStroke", MainFrame)
-    glow.Name = "PinkGlow"
     glow.Color = ACCENT
     glow.Thickness = 3
     glow.Transparency = 0.55
@@ -589,11 +587,19 @@ local TabVis = Window:AddTab("", "user")
 local TabCfg = Window:AddTab("", "settings")
 local TabInfo = Window:AddTab("", "info")
 
+for _, d in ipairs(Library.ScreenGui:GetDescendants()) do
+    if d:IsA("TextLabel") then
+        if d.Text == "Main" or d.Text == "ESP" or d.Text == "Visuals" or d.Text == "Config" or d.Text == "Info" then
+            d.Text = ""
+        end
+    end
+end
+
 local gAim = TabMain:AddLeftGroupbox("aim")
 gAim:AddToggle("sa_on", {Text = "", Default = false, Callback = function(s)
     SilentAimSettings.Enabled = s
     mouse_box.Visible = s and SilentAimSettings.ShowSilentAimTarget
-    Obsidian:Notify("silent aim " .. (s and "on" or "off"))
+    Library:Notify("silent aim " .. (s and "on" or "off"))
 end})
 gAim:AddDropdown("sa_part", {Values = {"Head", "HumanoidRootPart", "Random"}, Default = "HumanoidRootPart", Callback = function(v) SilentAimSettings.TargetPart = v end})
 gAim:AddDropdown("sa_method", {Values = {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"}, Default = "Raycast", Callback = function(v) SilentAimSettings.SilentAimMethod = v end})
@@ -746,7 +752,7 @@ gCfgSave:AddButton({Text = "", Func = function()
         local d = "SpentHub/" .. tostring(game.PlaceId)
         if not isfolder(d) then makefolder(d) end
         writefile(d .. "/" .. cfgName .. ".lua", HttpService:JSONEncode(SilentAimSettings))
-        Obsidian:Notify("saved " .. cfgName)
+        Library:Notify("saved " .. cfgName)
     end
 end})
 gCfgSave:AddButton({Text = "", Func = function()
@@ -758,7 +764,7 @@ gCfgSave:AddButton({Text = "", Func = function()
                 gCfgSave:AddButton({Text = "", Func = function()
                     local data = HttpService:JSONDecode(readfile(f))
                     for k, v in next, data do SilentAimSettings[k] = v end
-                    Obsidian:Notify("loaded " .. name)
+                    Library:Notify("loaded " .. name)
                 end})
             end
         end
@@ -768,7 +774,7 @@ end})
 local gInfo = TabInfo:AddLeftGroupbox("info")
 gInfo:AddLabel("RAlt aim · RShift hub · F punch · END unload")
 gInfo:AddButton({Text = "", Func = function()
-    pcall(function() Obsidian:Unload() end)
+    pcall(function() Library:Unload() end)
     pcall(function() fov_circle:Remove() end)
     pcall(function() mouse_box:Remove() end)
     stopNoclip(); stopNoclipPunch(); stopInvisible(); stopFastSwitch()
@@ -778,12 +784,12 @@ UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.RightAlt then
         SilentAimSettings.Enabled = not SilentAimSettings.Enabled
-        Obsidian:Notify("silent aim " .. (SilentAimSettings.Enabled and "on" or "off"))
+        Library:Notify("silent aim " .. (SilentAimSettings.Enabled and "on" or "off"))
     end
     if input.KeyCode == Enum.KeyCode.F and SilentAimSettings.NoclipPunchEnabled then doNoclipPunch() end
     if input.KeyCode == Enum.KeyCode.C and SilentAimSettings.AutoSprintEnabled then CrouchActive = not CrouchActive end
     if input.KeyCode == Enum.KeyCode.End then
-        pcall(function() Obsidian:Unload() end)
+        pcall(function() Library:Unload() end)
         pcall(function() fov_circle:Remove() end)
         pcall(function() mouse_box:Remove() end)
         stopNoclip(); stopNoclipPunch(); stopInvisible(); stopFastSwitch()
@@ -993,4 +999,4 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, i)
     return oldIndex(self, i)
 end))
 
-Obsidian:Notify("spent hub loaded")
+Library:Notify("spent hub loaded")
