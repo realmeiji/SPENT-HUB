@@ -518,33 +518,23 @@ local function startFastSwitch()
     end)
 end
 
-local SprintActive = false
-local SprintConn = nil
-local CrouchActive = false
-
-local function StopAutoSprint()
-    SprintActive = false
-    if SprintConn then
-        SprintConn:Disconnect()
-        SprintConn = nil
+local oldIsKeyDown
+oldIsKeyDown = hookfunction(UserInputService.IsKeyDown, function(self, keyCode)
+    if SilentAimSettings.AutoSprintEnabled and not CrouchActive and keyCode == Enum.KeyCode.LeftShift then
+        return true
     end
-end
+    return oldIsKeyDown(self, keyCode)
+end)
 
-local function StartAutoSprint()
-    if SprintActive then return end
-    SprintActive = true
-    SprintConn = RunService.RenderStepped:Connect(function()
-        if not SilentAimSettings.AutoSprintEnabled or CrouchActive then return end
-        local char = LocalPlayer.Character
-        if not char then return end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return end
-        
-        if humanoid.MoveDirection.Magnitude > 0 then
-            humanoid.WalkSpeed = 24
-        end
-    end)
-end
+local oldIsKeyPressed
+oldIsKeyPressed = hookfunction(UserInputService.IsKeyPressed, function(self, keyCode)
+    if SilentAimSettings.AutoSprintEnabled and not CrouchActive and keyCode == Enum.KeyCode.LeftShift then
+        return true
+    end
+    return oldIsKeyPressed(self, keyCode)
+end)
+
+local CrouchActive = false
 
 pcall(function()
     local hook = newcclosure(function() end)
@@ -748,7 +738,6 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     applySpeed(SilentAimSettings.SpeedValue)
     applyJumpPower(SilentAimSettings.JumpPowerValue)
     if SilentAimSettings.FastSwitchEnabled then startFastSwitch() end
-    if SilentAimSettings.AutoSprintEnabled then StartAutoSprint() end
 end)
 
 local gui = Instance.new("ScreenGui")
@@ -1840,9 +1829,8 @@ local function buildMain()
     makeSection(scroll, "AUTO SPRINT")
     makeToggle(scroll, "Auto Sprint", SilentAimSettings.AutoSprintEnabled, function(s)
         SilentAimSettings.AutoSprintEnabled = s
-        if s then StartAutoSprint() else StopAutoSprint() end
         notify("Auto Sprint " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
-    end, "Automatically sprint (24 speed) without holding shift")
+    end, "Automatically holds shift to sprint")
 
     makeSection(scroll, "NOCLIP PUNCH")
     makeToggle(scroll, "Noclip Punch", SilentAimSettings.NoclipPunchEnabled, function(s)
@@ -2595,6 +2583,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
     if input.KeyCode == Enum.KeyCode.F and SilentAimSettings.NoclipPunchEnabled then
         doNoclipPunch()
     end
+    if input.KeyCode == Enum.KeyCode.C and SilentAimSettings.AutoSprintEnabled then
+        CrouchActive = not CrouchActive
+    end
     if input.KeyCode == Enum.KeyCode.End then
         pcall(function() gui:Destroy() end)
         pcall(function() fov_circle:Remove() end)
@@ -2603,7 +2594,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
         stopNoclipPunch()
         stopInvisible()
         stopFastSwitch()
-        StopAutoSprint()
         for _, p in ipairs(Players:GetPlayers()) do removeESPData(p) end
         print("SPENT HUB unloaded.")
     end
