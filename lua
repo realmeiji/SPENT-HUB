@@ -134,7 +134,7 @@ local function addWhitelist(name) if not name or name == "" then return false en
 local function removeWhitelist(name) if not name then return false end Whitelist[string.lower(name)] = nil return true end
 
 local TARGET_LOCK_COLOR = Color3.fromRGB(255, 200, 220)
-local RING_IDLE_COLOR = Color3.fromRGB(255, 182, 193)
+local RING_IDLE_COLOR = Color3.fromRGB(255, 255, 255)
 
 local Theme = {
     ACCENT = Color3.fromRGB(255, 182, 193), ACCENT_LIGHT = Color3.fromRGB(255, 200, 220),
@@ -176,7 +176,7 @@ cursorGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local customCursor = Instance.new("ImageLabel")
 customCursor.Name = "Cursor"
-customCursor.Size = UDim2.fromOffset(24, 24)
+customCursor.Size = UDim2.fromOffset(32, 32)
 customCursor.BackgroundTransparency = 1
 customCursor.Image = "rbxassetid://2025732283"
 customCursor.ImageColor3 = Theme.ACCENT 
@@ -1984,7 +1984,7 @@ local function updateThemeColors()
     mainGlow.Color = Theme.ACCENT
     hubGlow.Color = Theme.ACCENT
     mouse_box.Color = Theme.ACCENT
-    fov_circle.Color = Theme.ACCENT
+    fov_circle.Color = RING_IDLE_COLOR
     contentHeader.TextColor3 = Theme.ACCENT
     rightHeader.TextColor3 = Theme.ACCENT
     icon.TextColor3 = Theme.ACCENT
