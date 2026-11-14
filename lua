@@ -518,7 +518,6 @@ local function startFastSwitch()
     end)
 end
 
-local CrouchActive = false
 local oldIsKeyDown
 oldIsKeyDown = hookfunction(UserInputService.IsKeyDown, function(self, keyCode)
     if SilentAimSettings.AutoSprintEnabled and not CrouchActive and keyCode == Enum.KeyCode.LeftShift then
@@ -526,6 +525,16 @@ oldIsKeyDown = hookfunction(UserInputService.IsKeyDown, function(self, keyCode)
     end
     return oldIsKeyDown(self, keyCode)
 end)
+
+local oldIsKeyPressed
+oldIsKeyPressed = hookfunction(UserInputService.IsKeyPressed, function(self, keyCode)
+    if SilentAimSettings.AutoSprintEnabled and not CrouchActive and keyCode == Enum.KeyCode.LeftShift then
+        return true
+    end
+    return oldIsKeyPressed(self, keyCode)
+end)
+
+local CrouchActive = false
 
 pcall(function()
     local hook = newcclosure(function() end)
@@ -2558,11 +2567,6 @@ Players.PlayerRemoving:Connect(function(plr)
 end)
 
 UserInputService.InputBegan:Connect(function(input, processed)
-    -- Auto sprint crouch detection BEFORE processed check
-    if input.KeyCode == Enum.KeyCode.C and SilentAimSettings.AutoSprintEnabled then
-        CrouchActive = not CrouchActive
-    end
-
     if processed then return end
     if input.KeyCode == Enum.KeyCode.RightAlt then
         SilentAimSettings.Enabled = not SilentAimSettings.Enabled
@@ -2578,6 +2582,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
     if input.KeyCode == Enum.KeyCode.F and SilentAimSettings.NoclipPunchEnabled then
         doNoclipPunch()
+    end
+    if input.KeyCode == Enum.KeyCode.C and SilentAimSettings.AutoSprintEnabled then
+        CrouchActive = not CrouchActive
     end
     if input.KeyCode == Enum.KeyCode.End then
         pcall(function() gui:Destroy() end)
