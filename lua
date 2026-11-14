@@ -520,6 +520,7 @@ end
 
 local SprintActive = false
 local SprintConn = nil
+local CrouchActive = false
 
 local function StopAutoSprint()
     SprintActive = false
@@ -533,17 +534,14 @@ local function StartAutoSprint()
     if SprintActive then return end
     SprintActive = true
     SprintConn = RunService.RenderStepped:Connect(function()
-        if not SilentAimSettings.AutoSprintEnabled then return end
+        if not SilentAimSettings.AutoSprintEnabled or CrouchActive then return end
         local char = LocalPlayer.Character
         if not char then return end
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not humanoid then return end
         
-        -- Force sprint by shifting the humanoid state if not already sprinting
         if humanoid.MoveDirection.Magnitude > 0 then
-            if humanoid.WalkSpeed < 20 then
-                humanoid.WalkSpeed = 20
-            end
+            humanoid.WalkSpeed = 24
         end
     end)
 end
@@ -1844,7 +1842,7 @@ local function buildMain()
         SilentAimSettings.AutoSprintEnabled = s
         if s then StartAutoSprint() else StopAutoSprint() end
         notify("Auto Sprint " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
-    end, "Automatically sprint without holding shift")
+    end, "Automatically sprint (24 speed) without holding shift")
 
     makeSection(scroll, "NOCLIP PUNCH")
     makeToggle(scroll, "Noclip Punch", SilentAimSettings.NoclipPunchEnabled, function(s)
