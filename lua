@@ -527,14 +527,6 @@ oldIsKeyDown = hookfunction(UserInputService.IsKeyDown, function(self, keyCode)
     return oldIsKeyDown(self, keyCode)
 end)
 
-local oldIsKeyPressed
-oldIsKeyPressed = hookfunction(UserInputService.IsKeyPressed, function(self, keyCode)
-    if SilentAimSettings.AutoSprintEnabled and not CrouchActive and keyCode == Enum.KeyCode.LeftShift then
-        return true
-    end
-    return oldIsKeyPressed(self, keyCode)
-end)
-
 pcall(function()
     local hook = newcclosure(function() end)
     for _, obj in next, getgc(false) do
