@@ -63,7 +63,7 @@ local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
 local FindFirstChild = game.FindFirstChild
 local RenderStepped = RunService.RenderStepped
 local GetMouseLocation = UserInputService.GetMouseLocation
-local ValidTargetParts = {"Head", "HumanoidRootPart"}
+local ValidTargetParts = {"Head", "HumanoidRootPart", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg", "Upper Torso", "Lower Torso"}
 local PredictionAmount = 0.165
 local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
@@ -195,7 +195,9 @@ local function getClosestPlayer()
             local part
             if tp == "Random" then part = C[ValidTargetParts[math.random(1, #ValidTargetParts)]]
             else part = C[tp] end
-            Closest = part; Dist = D
+            if part then
+                Closest = part; Dist = D
+            end
         end
     end
     return Closest
@@ -601,7 +603,11 @@ gAim:AddToggle("sa_on", {Text = "", Default = false, Callback = function(s)
     mouse_box.Visible = s and SilentAimSettings.ShowSilentAimTarget
     Library:Notify("silent aim " .. (s and "on" or "off"))
 end})
-gAim:AddDropdown("sa_part", {Values = {"Head", "HumanoidRootPart", "Random"}, Default = "HumanoidRootPart", Callback = function(v) SilentAimSettings.TargetPart = v end})
+gAim:AddDropdown("sa_part", {
+    Values = {"Head", "HumanoidRootPart", "Random", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg", "Upper Torso", "Lower Torso"},
+    Default = "HumanoidRootPart",
+    Callback = function(v) SilentAimSettings.TargetPart = v end
+})
 gAim:AddDropdown("sa_method", {Values = {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"}, Default = "Raycast", Callback = function(v) SilentAimSettings.SilentAimMethod = v end})
 gAim:AddSlider("sa_chance", {Text = "", Min = 0, Max = 100, Default = 100, Rounding = 0, Callback = function(v) SilentAimSettings.HitChance = v end})
 gAim:AddToggle("sa_team", {Text = "", Default = false, Callback = function(s) SilentAimSettings.TeamCheck = s end})
@@ -640,10 +646,24 @@ gFast:AddToggle("fs_on", {Text = "", Default = false, Callback = function(s)
     SilentAimSettings.FastSwitchEnabled = s
     if s then startFastSwitch() else stopFastSwitch() end
 end})
-gFast:AddKeyPicker("fs_key", {Text = "", Default = "H", Mode = "Toggle", Callback = function(state)
-    SilentAimSettings.FastSwitchEnabled = state
-    if state then startFastSwitch() else stopFastSwitch() end
-end})
+local fsKeyPicker = gFast:AddKeyPicker("fs_key", {
+    Text = "Hotkey",
+    Default = "H",
+    Mode = "Toggle",
+    SyncToggleState = true,
+    NoUI = false,
+    Callback = function(state)
+        SilentAimSettings.FastSwitchEnabled = state
+        if state then startFastSwitch() else stopFastSwitch() end
+    end
+})
+for _, instance in ipairs(Library.ScreenGui:GetDescendants()) do
+    if instance:IsA("TextLabel") and (instance.Text == "Hotkey") then
+        instance.TextTransparency = 1
+        instance.Size = UDim2.new(0, 0, 1, 0)
+        instance.Position = UDim2.new(0, 8, 0, 0)
+    end
+end
 gFast:AddSlider("fs_spd", {Text = "", Min = 1, Max = 50, Default = 5, Rounding = 0, Callback = function(v)
     SilentAimSettings.FastSwitchDelay = v / 100
 end})
