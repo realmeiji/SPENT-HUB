@@ -133,8 +133,8 @@ local function isWhitelisted(plr) if not plr then return false end return Whitel
 local function addWhitelist(name) if not name or name == "" then return false end Whitelist[string.lower(name)] = true return true end
 local function removeWhitelist(name) if not name then return false end Whitelist[string.lower(name)] = nil return true end
 
-local TARGET_LOCK_COLOR = Color3.fromRGB(255, 182, 193)
-local RING_IDLE_COLOR = Color3.fromRGB(200, 200, 220)
+local TARGET_LOCK_COLOR = Color3.fromRGB(255, 200, 220)
+local RING_IDLE_COLOR = Color3.fromRGB(255, 182, 193)
 
 local Theme = {
     ACCENT = Color3.fromRGB(255, 182, 193), ACCENT_LIGHT = Color3.fromRGB(255, 200, 220),
@@ -163,6 +163,34 @@ local GetMouseLocation = UserInputService.GetMouseLocation
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
 local PredictionAmount = 0.165
 
+local originalMouseIconEnabled = UserInputService.MouseIconEnabled
+UserInputService.MouseIconEnabled = false
+
+local cursorGui = Instance.new("ScreenGui")
+cursorGui.Name = "SpentHubCursor"
+cursorGui.ResetOnSpawn = false
+cursorGui.IgnoreGuiInset = true
+cursorGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+cursorGui.DisplayOrder = 2147483647
+cursorGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local customCursor = Instance.new("ImageLabel")
+customCursor.Name = "Cursor"
+customCursor.Size = UDim2.fromOffset(24, 24)
+customCursor.BackgroundTransparency = 1
+customCursor.Image = "rbxassetid://2025732283"
+customCursor.ImageColor3 = Theme.ACCENT 
+customCursor.AnchorPoint = Vector2.new(0, 0)
+customCursor.ZIndex = 2147483647
+customCursor.Visible = not IS_MOBILE
+customCursor.Parent = cursorGui
+
+local cursorConnection = RenderStepped:Connect(function()
+    if IS_MOBILE then return end
+    local mouseLoc = GetMouseLocation(UserInputService)
+    customCursor.Position = UDim2.fromOffset(mouseLoc.X, mouseLoc.Y)
+end)
+
 local mouse_box = Drawing.new("Square")
 mouse_box.Visible = false
 mouse_box.ZIndex = 999
@@ -179,7 +207,7 @@ fov_circle.Filled = false
 fov_circle.Visible = false
 fov_circle.ZIndex = 999
 fov_circle.Transparency = 0.9
-fov_circle.Color = Color3.fromRGB(255, 182, 193)
+fov_circle.Color = RING_IDLE_COLOR
 
 local ExpectedArguments = {
     FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = { "Instance", "Ray", "table", "boolean", "boolean" } },
@@ -515,16 +543,6 @@ local function startFastSwitch()
             end
         end
     end)
-end
-
-local function getBackpackGuns()
-    local out = {}
-    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
-    if not backpack then return out end
-    for _, t in ipairs(backpack:GetChildren()) do
-        if t:IsA("Tool") then table.insert(out, t.Name) end
-    end
-    return out
 end
 
 pcall(function()
@@ -1971,6 +1989,7 @@ local function updateThemeColors()
     rightHeader.TextColor3 = Theme.ACCENT
     icon.TextColor3 = Theme.ACCENT
     accentLine.BackgroundColor3 = Theme.ACCENT
+    customCursor.ImageColor3 = Theme.ACCENT
 end
 
 local MainFileName = "UniversalSilentAim"
@@ -2483,7 +2502,13 @@ local function updateESPLogic()
         local midX = hs.X
 
         if SilentAimSettings.ESP_Highlight then
-            local color = teamColors and getTeamColor(p) or SilentAimSettings.ESP_HighlightColor
+            local isTarget = (currentTarget and currentTarget.Parent == c)
+            local color
+            if isTarget then
+                color = TARGET_LOCK_COLOR
+            else
+                color = teamColors and getTeamColor(p) or SilentAimSettings.ESP_HighlightColor
+            end
             if d.hl.Adornee ~= c then d.hl.Adornee = c end
             if d.hl.Parent ~= c then d.hl.Parent = c end
             d.hl.FillColor = color
@@ -2563,6 +2588,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
         doNoclipPunch()
     end
     if input.KeyCode == Enum.KeyCode.End then
+        UserInputService.MouseIconEnabled = originalMouseIconEnabled
+        pcall(function() cursorGui:Destroy() end)
+        if cursorConnection then cursorConnection:Disconnect() end
+        
         pcall(function() gui:Destroy() end)
         pcall(function() fov_circle:Remove() end)
         pcall(function() mouse_box:Remove() end)
