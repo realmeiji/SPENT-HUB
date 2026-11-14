@@ -518,6 +518,9 @@ local function startFastSwitch()
     end)
 end
 
+-- FIX: CrouchActive declared here, before the hook functions that reference it
+local CrouchActive = false
+
 local oldIsKeyDown
 oldIsKeyDown = hookfunction(UserInputService.IsKeyDown, function(self, keyCode)
     if SilentAimSettings.AutoSprintEnabled and not CrouchActive and keyCode == Enum.KeyCode.LeftShift then
@@ -533,8 +536,6 @@ oldIsKeyPressed = hookfunction(UserInputService.IsKeyPressed, function(self, key
     end
     return oldIsKeyPressed(self, keyCode)
 end)
-
-local CrouchActive = false
 
 pcall(function()
     local hook = newcclosure(function() end)
@@ -1829,8 +1830,12 @@ local function buildMain()
     makeSection(scroll, "AUTO SPRINT")
     makeToggle(scroll, "Auto Sprint", SilentAimSettings.AutoSprintEnabled, function(s)
         SilentAimSettings.AutoSprintEnabled = s
+        if not s then
+            -- When disabled, also reset crouch state so it doesn't linger
+            CrouchActive = false
+        end
         notify("Auto Sprint " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
-    end, "Automatically holds shift to sprint")
+    end, "Automatically holds shift to sprint. Press C to crouch/uncrouch.")
 
     makeSection(scroll, "NOCLIP PUNCH")
     makeToggle(scroll, "Noclip Punch", SilentAimSettings.NoclipPunchEnabled, function(s)
@@ -2159,6 +2164,7 @@ local function buildInfo()
   RShift show/hide hub
   END    unload
   F      noclip punch
+  C      crouch (pauses auto sprint)
 ]]
     Instance.new("UICorner", info).CornerRadius = UDim.new(0.08, 0)
     local infoStroke = Instance.new("UIStroke", info)
@@ -2583,8 +2589,12 @@ UserInputService.InputBegan:Connect(function(input, processed)
     if input.KeyCode == Enum.KeyCode.F and SilentAimSettings.NoclipPunchEnabled then
         doNoclipPunch()
     end
-    if input.KeyCode == Enum.KeyCode.C and SilentAimSettings.AutoSprintEnabled then
-        CrouchActive = not CrouchActive
+    -- FIX: C key toggles crouch, pausing/resuming auto sprint
+    if input.KeyCode == Enum.KeyCode.C then
+        if SilentAimSettings.AutoSprintEnabled then
+            CrouchActive = not CrouchActive
+            notify("Auto Sprint " .. (CrouchActive and "paused (crouching)" or "resumed"), Theme.TEXT_DIM)
+        end
     end
     if input.KeyCode == Enum.KeyCode.End then
         pcall(function() gui:Destroy() end)
