@@ -124,7 +124,6 @@ local SilentAimSettings = {
     FastSwitchEnabled = false, FastSwitchDelay = 0.05,
     FastSwitchList = {"M9", "Revolver", "Remington 870", "MP5", "M4A1", "M700", "AK-47"},
     FastSwitchHotkey = Enum.KeyCode.H, NoclipPunchEnabled = false,
-    AutoSprintEnabled = false,
 }
 getgenv().SilentAimSettings = SilentAimSettings
 
@@ -163,6 +162,34 @@ local RenderStepped = RunService.RenderStepped
 local GetMouseLocation = UserInputService.GetMouseLocation
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
 local PredictionAmount = 0.165
+
+local originalMouseIconEnabled = UserInputService.MouseIconEnabled
+UserInputService.MouseIconEnabled = false
+
+local cursorGui = Instance.new("ScreenGui")
+cursorGui.Name = "SpentHubCursor"
+cursorGui.ResetOnSpawn = false
+cursorGui.IgnoreGuiInset = true
+cursorGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+cursorGui.DisplayOrder = 2147483647
+cursorGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local customCursor = Instance.new("ImageLabel")
+customCursor.Name = "Cursor"
+customCursor.Size = UDim2.fromOffset(32, 32)
+customCursor.BackgroundTransparency = 1
+customCursor.Image = "rbxassetid://2025732283"
+customCursor.ImageColor3 = Theme.ACCENT 
+customCursor.AnchorPoint = Vector2.new(0, 0)
+customCursor.ZIndex = 2147483647
+customCursor.Visible = not IS_MOBILE
+customCursor.Parent = cursorGui
+
+local cursorConnection = RenderStepped:Connect(function()
+    if IS_MOBILE then return end
+    local mouseLoc = GetMouseLocation(UserInputService)
+    customCursor.Position = UDim2.fromOffset(mouseLoc.X, mouseLoc.Y)
+end)
 
 local mouse_box = Drawing.new("Square")
 mouse_box.Visible = false
@@ -517,24 +544,6 @@ local function startFastSwitch()
         end
     end)
 end
-
-local oldIsKeyDown
-oldIsKeyDown = hookfunction(UserInputService.IsKeyDown, function(self, keyCode)
-    if SilentAimSettings.AutoSprintEnabled and not CrouchActive and keyCode == Enum.KeyCode.LeftShift then
-        return true
-    end
-    return oldIsKeyDown(self, keyCode)
-end)
-
-local oldIsKeyPressed
-oldIsKeyPressed = hookfunction(UserInputService.IsKeyPressed, function(self, keyCode)
-    if SilentAimSettings.AutoSprintEnabled and not CrouchActive and keyCode == Enum.KeyCode.LeftShift then
-        return true
-    end
-    return oldIsKeyPressed(self, keyCode)
-end)
-
-local CrouchActive = false
 
 pcall(function()
     local hook = newcclosure(function() end)
@@ -1826,12 +1835,6 @@ local function buildMain()
         notify("Autoshoot " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
     end, "Auto fires at current silent aim target")
 
-    makeSection(scroll, "AUTO SPRINT")
-    makeToggle(scroll, "Auto Sprint", SilentAimSettings.AutoSprintEnabled, function(s)
-        SilentAimSettings.AutoSprintEnabled = s
-        notify("Auto Sprint " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
-    end, "Automatically holds shift to sprint")
-
     makeSection(scroll, "NOCLIP PUNCH")
     makeToggle(scroll, "Noclip Punch", SilentAimSettings.NoclipPunchEnabled, function(s)
         SilentAimSettings.NoclipPunchEnabled = s
@@ -1986,6 +1989,7 @@ local function updateThemeColors()
     rightHeader.TextColor3 = Theme.ACCENT
     icon.TextColor3 = Theme.ACCENT
     accentLine.BackgroundColor3 = Theme.ACCENT
+    customCursor.ImageColor3 = Theme.ACCENT
 end
 
 local MainFileName = "UniversalSilentAim"
@@ -2583,10 +2587,11 @@ UserInputService.InputBegan:Connect(function(input, processed)
     if input.KeyCode == Enum.KeyCode.F and SilentAimSettings.NoclipPunchEnabled then
         doNoclipPunch()
     end
-    if input.KeyCode == Enum.KeyCode.C and SilentAimSettings.AutoSprintEnabled then
-        CrouchActive = not CrouchActive
-    end
     if input.KeyCode == Enum.KeyCode.End then
+        UserInputService.MouseIconEnabled = originalMouseIconEnabled
+        pcall(function() cursorGui:Destroy() end)
+        if cursorConnection then cursorConnection:Disconnect() end
+        
         pcall(function() gui:Destroy() end)
         pcall(function() fov_circle:Remove() end)
         pcall(function() mouse_box:Remove() end)
