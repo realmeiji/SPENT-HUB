@@ -119,7 +119,7 @@ local SilentAimSettings = {
     ESP_HPColor = Color3.fromRGB(80, 255, 100),
     ESP_TraceColor = Color3.fromRGB(255, 255, 255),
     AutoshootEnabled = false, NoclipEnabled = false,
-    SpeedValue = 16, JumpPowerValue = 50,
+
     InvisibleEnabled = false, KorbloxEnabled = false, HeadlessEnabled = false,
     FastSwitchEnabled = false, FastSwitchDelay = 0.05,
     FastSwitchList = {"M9", "Revolver", "Remington 870", "MP5", "M4A1", "M700", "AK-47"},
@@ -160,36 +160,59 @@ local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
 local FindFirstChild = game.FindFirstChild
 local RenderStepped = RunService.RenderStepped
 local GetMouseLocation = UserInputService.GetMouseLocation
-local ValidTargetParts = {"Head", "HumanoidRootPart"}
+local ValidTargetParts = {"Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg"}
 local PredictionAmount = 0.165
 
+-- ── CUSTOM CURSOR (pure Drawing rings, no asset ID) ───────────────────
 local originalMouseIconEnabled = UserInputService.MouseIconEnabled
 UserInputService.MouseIconEnabled = false
 
-local cursorGui = Instance.new("ScreenGui")
-cursorGui.Name = "SpentHubCursor"
-cursorGui.ResetOnSpawn = false
-cursorGui.IgnoreGuiInset = true
-cursorGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-cursorGui.DisplayOrder = 2147483647
-cursorGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local cursorOuter = Drawing.new("Circle")
+cursorOuter.Radius       = 9
+cursorOuter.Thickness    = 2.2
+cursorOuter.NumSides     = 64
+cursorOuter.Filled       = false
+cursorOuter.Color        = Color3.fromRGB(0, 0, 0)
+cursorOuter.Transparency = 1
+cursorOuter.ZIndex       = 2147483646
+cursorOuter.Visible      = not IS_MOBILE
 
-local customCursor = Instance.new("ImageLabel")
-customCursor.Name = "Cursor"
-customCursor.Size = UDim2.fromOffset(32, 32)
-customCursor.BackgroundTransparency = 1
-customCursor.Image = "rbxassetid://2025732283"
-customCursor.ImageColor3 = Theme.ACCENT 
-customCursor.AnchorPoint = Vector2.new(0, 0)
-customCursor.ZIndex = 2147483647
-customCursor.Visible = not IS_MOBILE
-customCursor.Parent = cursorGui
+local cursorInner = Drawing.new("Circle")
+cursorInner.Radius       = 5
+cursorInner.Thickness    = 2.2
+cursorInner.NumSides     = 64
+cursorInner.Filled       = false
+cursorInner.Color        = Color3.fromRGB(255, 255, 255)
+cursorInner.Transparency = 1
+cursorInner.ZIndex       = 2147483647
+cursorInner.Visible      = not IS_MOBILE
+
+local CURSOR_COLORS = {
+    Color3.fromRGB(255, 255, 255),
+    Color3.fromRGB(255, 182, 193),
+    Color3.fromRGB(255, 255, 255),
+    Color3.fromRGB(200, 200, 255),
+    Color3.fromRGB(255, 255, 255),
+}
+local colorIdx       = 1
+local lastColorSwap  = 0
+local COLOR_INTERVAL = 0.2
 
 local cursorConnection = RenderStepped:Connect(function()
     if IS_MOBILE then return end
     local mouseLoc = GetMouseLocation(UserInputService)
-    customCursor.Position = UDim2.fromOffset(mouseLoc.X, mouseLoc.Y)
+    local cx = mouseLoc.X
+    local cy = mouseLoc.Y
+    cursorOuter.Position = Vector2.new(cx, cy)
+    cursorInner.Position = Vector2.new(cx, cy)
+    local now = tick()
+    if now - lastColorSwap >= COLOR_INTERVAL then
+        lastColorSwap = now
+        colorIdx = colorIdx % #CURSOR_COLORS + 1
+        cursorInner.Color = CURSOR_COLORS[colorIdx]
+    end
 end)
+-- ── END CUSTOM CURSOR ─────────────────────────────────────────────────
 
 local mouse_box = Drawing.new("Square")
 mouse_box.Visible = false
@@ -603,16 +626,6 @@ local function startNoclipPunch()
 end
 local function doNoclipPunch() task.delay(0.35, startNoclipPunch) end
 
-local function applySpeed(v)
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.WalkSpeed = v end
-end
-local function applyJumpPower(v)
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.UseJumpPower = true hum.JumpPower = v end
-end
 
 local InvisibleRealCFrame = nil
 local InvisibleAnimationTrack = nil
@@ -743,9 +756,6 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     if SilentAimSettings.InvisibleEnabled then startInvisible() end
     if SilentAimSettings.HeadlessEnabled then applyHeadless(char) end
     if SilentAimSettings.KorbloxEnabled then applyKorblox(char) end
-    task.wait(0.1)
-    applySpeed(SilentAimSettings.SpeedValue)
-    applyJumpPower(SilentAimSettings.JumpPowerValue)
     if SilentAimSettings.FastSwitchEnabled then startFastSwitch() end
 end)
 
@@ -1796,7 +1806,11 @@ local function buildMain()
         mouse_box.Visible = s and SilentAimSettings.ShowSilentAimTarget
         notify("Silent Aim " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
     end, "Master silent aim toggle")
-    makeDropdown(scroll, "Target Part", {"Head", "HumanoidRootPart", "Random"}, SilentAimSettings.TargetPart, function(v) SilentAimSettings.TargetPart = v end)
+    makeDropdown(scroll, "Target Part", {
+        "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg", "HumanoidRootPart", "Random"
+    }, SilentAimSettings.TargetPart, function(v)
+        SilentAimSettings.TargetPart = v
+    end)
     makeDropdown(scroll, "Method", {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"}, SilentAimSettings.SilentAimMethod, function(v)
         SilentAimSettings.SilentAimMethod = v
         statusLabel.Text = "* method: " .. v
@@ -1951,14 +1965,6 @@ local function buildVisuals()
         if s then startNoclip() else stopNoclip() end
         notify("Noclip " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
     end, "Walk through parts")
-    makeSlider(scroll, "Speed", 8, 200, SilentAimSettings.SpeedValue, function(v)
-        SilentAimSettings.SpeedValue = v
-        applySpeed(v)
-    end)
-    makeSlider(scroll, "Jump Power", 50, 500, SilentAimSettings.JumpPowerValue, function(v)
-        SilentAimSettings.JumpPowerValue = v
-        applyJumpPower(v)
-    end)
     makeToggle(scroll, "Invisible", SilentAimSettings.InvisibleEnabled, function(s)
         SilentAimSettings.InvisibleEnabled = s
         if s then startInvisible() else stopInvisible() end
@@ -1989,7 +1995,8 @@ local function updateThemeColors()
     rightHeader.TextColor3 = Theme.ACCENT
     icon.TextColor3 = Theme.ACCENT
     accentLine.BackgroundColor3 = Theme.ACCENT
-    customCursor.ImageColor3 = Theme.ACCENT
+    CURSOR_COLORS[2] = Theme.ACCENT
+    CURSOR_COLORS[4] = Theme.ACCENT_LIGHT or Theme.ACCENT
 end
 
 local MainFileName = "UniversalSilentAim"
@@ -2135,6 +2142,12 @@ local function buildInfo()
     info.Text = [[
  SPENT HUB
 
+ CUSTOM CURSOR
+  Pure Drawing rings — no asset ID needed.
+  Outer ring: black (pops on light bg).
+  Inner ring: white cycling to accent colors.
+  Ring center = exact click point, zero offset.
+
  HIGHLIGHT ESP FIXED
   Highlight now uses DepthMode.AlwaysOnTop
   so it shows through walls in every view.
@@ -2155,7 +2168,7 @@ local function buildInfo()
   Toggle then press F near a wall.
 
  VISUALS tab
-  Noclip / Speed / Jump Power / Invisible
+  Noclip / Invisible
   Korblox / Headless
 
  KEYBINDS
@@ -2589,9 +2602,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
     if input.KeyCode == Enum.KeyCode.End then
         UserInputService.MouseIconEnabled = originalMouseIconEnabled
-        pcall(function() cursorGui:Destroy() end)
+        pcall(function() cursorOuter:Remove() end)
+        pcall(function() cursorInner:Remove() end)
         if cursorConnection then cursorConnection:Disconnect() end
-        
         pcall(function() gui:Destroy() end)
         pcall(function() fov_circle:Remove() end)
         pcall(function() mouse_box:Remove() end)
