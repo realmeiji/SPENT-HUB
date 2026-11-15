@@ -164,9 +164,15 @@ local ValidTargetParts = {"Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "Ri
 local PredictionAmount = 0.165
 
 -- ── CUSTOM CURSOR (pure Drawing rings, no asset ID) ───────────────────
+-- The ring center IS the cursor tip — Position on a Drawing.Circle is
+-- its center, so mouseLoc.X / mouseLoc.Y with zero offset is exact.
+-- Two concentric rings (outer black, inner white) stay readable on any
+-- background color. The inner ring cycles through 5 accent tints.
+
 local originalMouseIconEnabled = UserInputService.MouseIconEnabled
 UserInputService.MouseIconEnabled = false
 
+-- outer ring: black so it pops on light/colored backgrounds
 local cursorOuter = Drawing.new("Circle")
 cursorOuter.Radius       = 9
 cursorOuter.Thickness    = 2.2
@@ -177,6 +183,7 @@ cursorOuter.Transparency = 1
 cursorOuter.ZIndex       = 2147483646
 cursorOuter.Visible      = not IS_MOBILE
 
+-- inner ring: white so it pops on dark backgrounds
 local cursorInner = Drawing.new("Circle")
 cursorInner.Radius       = 5
 cursorInner.Thickness    = 2.2
@@ -187,24 +194,27 @@ cursorInner.Transparency = 1
 cursorInner.ZIndex       = 2147483647
 cursorInner.Visible      = not IS_MOBILE
 
+-- 5-step color cycle on the inner ring (white ↔ pink accent ↔ blue-white)
 local CURSOR_COLORS = {
-    Color3.fromRGB(255, 255, 255),
-    Color3.fromRGB(255, 182, 193),
-    Color3.fromRGB(255, 255, 255),
-    Color3.fromRGB(200, 200, 255),
-    Color3.fromRGB(255, 255, 255),
+    Color3.fromRGB(255, 255, 255),   -- white
+    Color3.fromRGB(255, 182, 193),   -- pink (theme accent)
+    Color3.fromRGB(255, 255, 255),   -- white
+    Color3.fromRGB(200, 200, 255),   -- cool blue-white
+    Color3.fromRGB(255, 255, 255),   -- white
 }
 local colorIdx       = 1
 local lastColorSwap  = 0
-local COLOR_INTERVAL = 0.2
+local COLOR_INTERVAL = 0.2  -- seconds per color step
 
 local cursorConnection = RenderStepped:Connect(function()
     if IS_MOBILE then return end
     local mouseLoc = GetMouseLocation(UserInputService)
+    -- center of ring = cursor tip, no offset needed
     local cx = mouseLoc.X
     local cy = mouseLoc.Y
     cursorOuter.Position = Vector2.new(cx, cy)
     cursorInner.Position = Vector2.new(cx, cy)
+    -- cycle inner ring color
     local now = tick()
     if now - lastColorSwap >= COLOR_INTERVAL then
         lastColorSwap = now
@@ -1806,11 +1816,7 @@ local function buildMain()
         mouse_box.Visible = s and SilentAimSettings.ShowSilentAimTarget
         notify("Silent Aim " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
     end, "Master silent aim toggle")
-    makeDropdown(scroll, "Target Part", {
-        "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg", "HumanoidRootPart", "Random"
-    }, SilentAimSettings.TargetPart, function(v)
-        SilentAimSettings.TargetPart = v
-    end)
+    makeDropdown(scroll, "Target Part", {"Head", "HumanoidRootPart", "Random"}, SilentAimSettings.TargetPart, function(v) SilentAimSettings.TargetPart = v end)
     makeDropdown(scroll, "Method", {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"}, SilentAimSettings.SilentAimMethod, function(v)
         SilentAimSettings.SilentAimMethod = v
         statusLabel.Text = "* method: " .. v
@@ -1965,6 +1971,14 @@ local function buildVisuals()
         if s then startNoclip() else stopNoclip() end
         notify("Noclip " .. (s and "enabled" or "disabled"), s and Theme.ACCENT or Theme.TEXT_DIM)
     end, "Walk through parts")
+    makeSlider(scroll, "Speed", 8, 200, SilentAimSettings.SpeedValue, function(v)
+        SilentAimSettings.SpeedValue = v
+        applySpeed(v)
+    end)
+    makeSlider(scroll, "Jump Power", 50, 500, SilentAimSettings.JumpPowerValue, function(v)
+        SilentAimSettings.JumpPowerValue = v
+        applyJumpPower(v)
+    end)
     makeToggle(scroll, "Invisible", SilentAimSettings.InvisibleEnabled, function(s)
         SilentAimSettings.InvisibleEnabled = s
         if s then startInvisible() else stopInvisible() end
@@ -1995,6 +2009,7 @@ local function updateThemeColors()
     rightHeader.TextColor3 = Theme.ACCENT
     icon.TextColor3 = Theme.ACCENT
     accentLine.BackgroundColor3 = Theme.ACCENT
+    -- update cursor inner ring base color to match new accent
     CURSOR_COLORS[2] = Theme.ACCENT
     CURSOR_COLORS[4] = Theme.ACCENT_LIGHT or Theme.ACCENT
 end
@@ -2168,7 +2183,7 @@ local function buildInfo()
   Toggle then press F near a wall.
 
  VISUALS tab
-  Noclip / Invisible
+  Noclip / Speed / Jump Power / Invisible
   Korblox / Headless
 
  KEYBINDS
@@ -2601,10 +2616,13 @@ UserInputService.InputBegan:Connect(function(input, processed)
         doNoclipPunch()
     end
     if input.KeyCode == Enum.KeyCode.End then
+        -- restore mouse icon
         UserInputService.MouseIconEnabled = originalMouseIconEnabled
+        -- destroy custom cursor drawings
         pcall(function() cursorOuter:Remove() end)
         pcall(function() cursorInner:Remove() end)
         if cursorConnection then cursorConnection:Disconnect() end
+        -- destroy main gui
         pcall(function() gui:Destroy() end)
         pcall(function() fov_circle:Remove() end)
         pcall(function() mouse_box:Remove() end)
